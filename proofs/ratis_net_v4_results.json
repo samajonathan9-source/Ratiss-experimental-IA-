@@ -6,9 +6,9 @@
   "emotional_differential_anger_joy": -0.38051324434550904,
   "eth_learns": true,
   "emotion_emerges": true,
-  "marks_differ": false,
-  "mark_anger": null,
-  "mark_joy": null,
+  "marks_differ": true,
+  "mark_anger": "67d080c15c51b7ab",
+  "mark_joy": "0fcbc8797a1cc899",
   "final_accuracy": 0.5,
   "acc_history": [
     0.3875,
@@ -42,6 +42,6 @@
     0.375,
     0.5
   ],
-  "total_collapses": 288,
+  "total_collapses": 1533,
   "verdict": "PASS"
 }

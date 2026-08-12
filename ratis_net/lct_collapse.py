@@ -21,17 +21,16 @@ from ratis_net.lct_network import _persistence_diagrams_lite
 def compute_coherence(token_embedding: np.ndarray, weights: np.ndarray,
                       t_step: int = 0, omega: float = math.pi / 2) -> float:
     """Calcule la cohérence C du signal = corrélation entre le token et les
-    poids, modulée par l'oscillation θ(t) = cos(ωt).
+    poids, modulée par l'oscillation theta(t) = cos(omega*t).
 
-    C est élevé quand le token "résonne" avec la structure des poids
-    (cohérent), bas sinon (décohérent).
+    C oscille VRAIMENT avec le temps : la modulation multiplicative par
+    cos(omega*t) fait que C passe par des maxima (collapse possible) et des
+    minima (pas de collapse). C'est l'oscillation du milieu génial.
     """
-    # corrélation token-poids (produit scalaire normalisé)
     if weights.ndim == 1:
         w = weights
     else:
-        w = weights.mean(axis=0)  # signature moyenne des poids
-    # aligner dimensions
+        w = weights.mean(axis=0)
     min_d = min(len(w), len(token_embedding))
     w = w[:min_d]
     t = token_embedding[:min_d]
@@ -39,22 +38,27 @@ def compute_coherence(token_embedding: np.ndarray, weights: np.ndarray,
         corr = 0.0
     else:
         corr = float(np.dot(w, t) / (np.linalg.norm(w) * np.linalg.norm(t) + 1e-9))
-    # modulation par l'oscillation (milieu génial)
+    # la coherence oscille : C = |corr| * amp * (0.5 + 0.5*cos(omega*t))
+    # amp amplifie la correlation (le token resonne avec les poids)
     theta = math.cos(omega * t_step)
-    C = abs(corr) * abs(theta)
+    amp = 5.0  # amplification : un token qui resonne produit une coherence forte
+    C = abs(corr) * amp * (0.5 + 0.5 * theta)
     return min(1.0, max(0.0, C))
 
 
-def topological_mark(weights: np.ndarray, max_edge: float = 2.0) -> str:
-    """La MARQUE topologique = hash du cycle H1 survivant après effondrement.
+def topological_mark(weights: np.ndarray, c_seuil: float = 0.0,
+                     env_vector: np.ndarray | None = None,
+                     max_edge: float = 2.0) -> str:
+    """La MARQUE topologique = hash du cycle H1 survivant + contexte thermo.
 
-    Pas la valeur d'énergie (P_sig=0.60). Le HASH de la forme qui survit.
-    C'est le bit MCB v4 : on certifie le message (la marque), pas le courant.
+    La marque dépend de :
+    1. La structure topologique des poids (quels neurones sont liés).
+    2. Le seuil thermo C_seuil au moment du collapse (contexte émotionnel).
+    3. L'environnement (features patient) au moment du collapse.
+
+    C'est la "topo value" : pas la valeur d'énergie, la MARQUE qui reste
+    après l'effondrement, contextuelle à l'environnement.
     """
-    # calculer le diagramme de persistance
-    diagrams = _persistence_diagrams_lite(weights, max_edge)
-    # le cycle survivant = les arêtes du complexe à max_edge
-    # on hash la STRUCTURE (quels neurones sont liés), pas les valeurs
     n = len(weights)
     edges = []
     for i in range(n):
@@ -62,40 +66,40 @@ def topological_mark(weights: np.ndarray, max_edge: float = 2.0) -> str:
             d = float(np.linalg.norm(weights[i] - weights[j]))
             if d <= max_edge:
                 edges.append(f"{i}-{j}:{d:.3f}")
-    # hash de la structure topologique (la marque)
+    # hash de la structure topologique + contexte thermo
     mark_str = "|".join(sorted(edges))
+    mark_str += f"|C_seuil={c_seuil:.6f}"
+    if env_vector is not None:
+        mark_str += f"|env={np.array2string(env_vector, precision=4)}"
     return hashlib.sha256(mark_str.encode()).hexdigest()[:16]
 
 
 def collapse(token_embedding: np.ndarray, weights: np.ndarray,
              c_seuil_thermo: float, t_step: int = 0,
-             omega: float = math.pi / 2, max_edge: float = 2.0) -> dict:
+             omega: float = math.pi / 2, max_edge: float = 2.0,
+             env_vector: np.ndarray | None = None) -> dict:
     """L'effondrement topologique.
 
     1. On calcule C (cohérence token-poids sous oscillation).
-    2. Si C >= C_seuil_thermo → l'effondrement se produit.
-    3. On garde la MARQUE topologique (hash du cycle survivant).
-    4. La valeur d'énergie (P_sig) est perdue — on garde la marque.
-
-    Returns:
-        dict avec : collapsed (bool), mark (hash), C, P_sig (perdu), c_seuil.
+    2. Si C >= C_seuil_thermo -> l'effondrement se produit.
+    3. On garde la MARQUE topologique (hash du cycle survivant + contexte thermo).
+    4. La valeur d'energie (P_sig) est perdue -- on garde la marque.
     """
     C = compute_coherence(token_embedding, weights, t_step, omega)
-    # P_sig est calculé mais IL EST PERDU (on garde la marque, pas la valeur)
     P_sig = _persistence_diagrams_lite(weights, max_edge)
 
     if C >= c_seuil_thermo:
-        # effondrement : on garde la MARQUE topo, pas la valeur
-        mark = topological_mark(weights, max_edge)
+        # effondrement : on garde la MARQUE topo contextuelle, pas la valeur
+        mark = topological_mark(weights, c_seuil=c_seuil_thermo,
+                                env_vector=env_vector, max_edge=max_edge)
         return {
             "collapsed": True,
-            "mark": mark,          # la marque topo (le bit MCB)
+            "mark": mark,
             "C": C,
             "c_seuil": c_seuil_thermo,
-            "P_sig_lost": P_sig,   # la valeur est PERDUE (comme l'énergie après collapse)
+            "P_sig_lost": P_sig,
         }
     else:
-        # pas d'effondrement, le cycle continue
         return {
             "collapsed": False,
             "mark": None,

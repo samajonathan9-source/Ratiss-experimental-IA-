@@ -68,8 +68,9 @@ class RatisNetV4:
         # 2. cohérence C (token-poids sous oscillation)
         W = self._weight_matrix()
         C = compute_coherence(token_embedding, W, t_step, self.omega)
-        # 3. collapse si C >= C_seuil
-        result = collapse(token_embedding, W, c_seuil, t_step, self.omega)
+        # 3. collapse si C >= C_seuil (avec contexte thermo pour la marque)
+        result = collapse(token_embedding, W, c_seuil, t_step, self.omega,
+                          env_vector=env.to_vector())
         # 4. forward du réseau LCT (comme v1)
         x = token_embedding[:self.n_in] if len(token_embedding) >= self.n_in \
             else np.pad(token_embedding, (0, self.n_in - len(token_embedding)))
