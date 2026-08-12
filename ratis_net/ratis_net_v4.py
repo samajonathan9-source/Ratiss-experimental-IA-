@@ -34,11 +34,13 @@ class RatisNetV4:
     """
 
     def __init__(self, n_in: int, n_hidden: int, n_out: int,
-                 token_dim: int = 8, eta: float = 0.05,
+                 token_dim: int = 8, env_dim: int = 4, eta: float = 0.05,
                  omega: float = math.pi / 2, seed: int = 42):
         self.n_in = n_in
         self.n_hidden = n_hidden
         self.n_out = n_out
+        self.token_dim = token_dim
+        self.env_dim = env_dim
         self.eta = eta
         self.omega = omega
         # réseau LCT (comme v1)
@@ -47,7 +49,7 @@ class RatisNetV4:
         self.output = [LCTNeuron(n_hidden, eta=eta, omega=omega, seed=seed + 100 + i)
                         for i in range(n_out)]
         # fixeur thermo ETH
-        self.eth = ETHThermoFixer(token_dim=token_dim, env_dim=4, hidden=16, seed=seed)
+        self.eth = ETHThermoFixer(token_dim=token_dim, env_dim=env_dim, hidden=16, seed=seed)
         # historique
         self.collapse_history = []
         self.mark_history = []
@@ -60,6 +62,25 @@ class RatisNetV4:
     def _compute_P_sig(self, max_edge=2.0):
         return _persistence_diagrams_lite(self._weight_matrix(), max_edge)
 
+    def _build_input(self, token_embedding: np.ndarray, env: ThermoEnvironment) -> np.ndarray:
+        """Construit l'entrée du réseau LCT = token ⊕ environnement.
+
+        Le label dépend de (token, env) — ex. « bonjour » en colère → 0 mais en
+        joie → 1. Sans l'environnement, le réseau est aveugle au contexte et ne
+        peut pas séparer deux situations qui partagent le même token. On
+        concatène donc le vecteur d'environnement à l'embedding du token.
+        """
+        tok = token_embedding[:self.token_dim] if len(token_embedding) >= self.token_dim \
+            else np.pad(token_embedding, (0, self.token_dim - len(token_embedding)))
+        env_vec = env.to_vector()[:self.env_dim]
+        x = np.concatenate([tok, env_vec])
+        # ajuster à la dimension d'entrée attendue par la couche cachée
+        if len(x) < self.n_in:
+            x = np.pad(x, (0, self.n_in - len(x)))
+        elif len(x) > self.n_in:
+            x = x[:self.n_in]
+        return x
+
     def forward(self, token_embedding: np.ndarray, env: ThermoEnvironment,
                 t_step: int = 0) -> dict:
         """Forward v4 : ETH fixe le seuil, collapse garde la marque."""
@@ -71,9 +92,8 @@ class RatisNetV4:
         # 3. collapse si C >= C_seuil (avec contexte thermo pour la marque)
         result = collapse(token_embedding, W, c_seuil, t_step, self.omega,
                           env_vector=env.to_vector())
-        # 4. forward du réseau LCT (comme v1)
-        x = token_embedding[:self.n_in] if len(token_embedding) >= self.n_in \
-            else np.pad(token_embedding, (0, self.n_in - len(token_embedding)))
+        # 4. forward du réseau LCT : entrée = token ⊕ env (le label dépend du couple)
+        x = self._build_input(token_embedding, env)
         h = np.array([n.forward(x, t_step) for n in self.hidden])
         out = np.array([n.forward(h, t_step) for n in self.output])
         result["output"] = out
@@ -95,12 +115,10 @@ class RatisNetV4:
         eth_error = self.eth.train_step(token_embedding, env, target_c_seuil, lr=lr_eth)
         # forward + collapse
         result = self.forward(token_embedding, env, t_step)
-        # entraîner le réseau LCT (comme v1)
+        # entraîner le réseau LCT (comme v1) : entrée = token ⊕ env
         W = self._weight_matrix()
         P_sig = self._compute_P_sig()
-        phi = math.cos(self.omega * t_step)
-        x = token_embedding[:self.n_in] if len(token_embedding) >= self.n_in \
-            else np.pad(token_embedding, (0, self.n_in - len(token_embedding)))
+        x = self._build_input(token_embedding, env)
         target = np.zeros(self.n_out)
         target[target_label] = 1.0
         h = np.array([n.forward(x, t_step) for n in self.hidden])

@@ -57,8 +57,9 @@ def main():
     print(f"  calme  → C_seuil=0.5 (neutre)")
     print(f"  peur   → C_seuil=0.2 (effondrement très rapide)")
 
-    net = RatisNetV4(n_in=8, n_hidden=10, n_out=3, token_dim=8, eta=0.05, seed=42)
-    print(f"\nRATIS-Net v4 : 8→10→3 + ETH(token_dim=8, env_dim=4)")
+    net = RatisNetV4(n_in=12, n_hidden=10, n_out=3, token_dim=8, env_dim=4, eta=0.1, seed=42)
+    print(f"\nRATIS-Net v4 : 12(=8 token ⊕ 4 env)→10→3 + ETH(token_dim=8, env_dim=4)")
+    print(f"  entrée réseau = token ⊕ environnement (le label dépend du couple)")
 
     print(f"\nEntraînement (30 epochs) :")
     results = net.train(samples, epochs=30, lr_eth=0.1, verbose=True)

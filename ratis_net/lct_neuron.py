@@ -44,17 +44,29 @@ class LCTNeuron:
     def forward(self, x: np.ndarray, t_step: int = 0) -> float:
         """Forward pass : activation modulée par la cohérence C.
 
-        φ oscille comme cos(ωt) (milieu génial). L'activation est une tanh
-        modulée par C (cohérence du signal d'entrée).
+        φ = |cos(ωt)| : amplitude de cohérence du milieu génial (toujours ≥ 0,
+        jamais n'inverse l'apprentissage). La phase signée cos(ωt) a un sens
+        physique dans le cerveau TTF (l'effondrement aux maxima), mais comme
+        coefficient d'apprentissage elle désapprend la moitié du temps → on
+        garde l'amplitude |cos(ωt)|.
+
+        C = cohérence structurelle du signal d'entrée : la polarité dominante
+        des composantes (un signal cohérent a une majorité de composantes du
+        même signe). Borne [0.5, 1]. Contrairement à |mean|/std (≈ 0 pour un
+        signal centré), ce proxy reste non nul → l'update ΔW a une amplitude
+        réelle et les poids bougent effectivement.
         """
-        # mise à jour de la phase du milieu géniel
-        self.phi = math.cos(self.omega * t_step)
-        # cohérence du signal d'entrée = corrélation moyenne des composantes
-        # (un signal cohérent a ses composantes corrélées)
-        if x.std() > 1e-9:
-            # C = |corrélation moyenne entre composantes| (proxy simple)
-            self.C = float(abs(np.mean(x) / (x.std() + 1e-9)))
-            self.C = min(1.0, max(0.0, self.C))
+        # amplitude de cohérence du milieu génial (toujours ≥ 0)
+        self.phi = abs(math.cos(self.omega * t_step))
+        # cohérence structurelle = polarité dominante des composantes
+        if len(x) > 1 and x.std() > 1e-9:
+            majority_sign = np.sign(np.mean(x))
+            if majority_sign != 0:
+                # fraction des composantes du signe majoritaire, recentrée [0.5, 1]
+                frac = float(np.mean(np.sign(x) == majority_sign))
+                self.C = min(1.0, max(0.0, 0.5 + 0.5 * frac))
+            else:
+                self.C = 0.5
         else:
             self.C = 0.5
         # activation = tanh(w·x + b) modulée par C
@@ -82,7 +94,7 @@ class LCTNeuron:
         error = target - output
         # mise à jour par LCT : ΔW = η · φ · P_sig · C · error · x
         # P_sig module l'amplitude (cycle long = concept robuste = update fort)
-        # φ signe la direction (phase du milieu génial)
+        # φ = |cos(ωt)| module l'amplitude (cohérence du milieu génial)
         # C module la confiance (signal cohérent = apprentissage autorisé)
         delta_w = self.eta * self.phi * P_sig * self.C * error * x
         self.weights += delta_w
@@ -99,6 +111,7 @@ class LCTNeuron:
         })
 
     def predict(self, x: np.ndarray) -> float:
-        """Prédiction (sans mise à jour)."""
+        """Prédiction (sans mise à jour). Recalcule C pour la modulation."""
+        self.forward(x, 0)
         z = np.dot(self.weights, x) + self.bias
         return math.tanh(z) * self.C
