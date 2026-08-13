@@ -24,22 +24,15 @@ from pathlib import Path
 
 import numpy as np
 
-# persistance homology : on réutilise le calculateur du cerveau TTF si dispo,
-# sinon on utilise le calculateur lite de lct_network.
-_AEON_PATH = Path(__file__).resolve().parents[2] / "RATISS-ODV-AEON"
+# persistance homology : on utilise le persistence_optimizer (qui choisit
+# automatiquement GUDHI si dispo, sinon CPU vectorisé, sinon lite). Le
+# backend GUDHI (C++) est ~95x plus rapide que l'implémentation Python.
 try:
-    if _AEON_PATH.is_dir():
-        # AEON a un dossier ratis_net/ (vieille v1) : on l'ajoute en FIN de path
-        # pour ne résoudre que kernel.* (absent de notre repo).
-        sys.path.append(str(_AEON_PATH))
-        from kernel.ttf.ttf_compute import _persistence_diagrams
-        _PERS_FN = lambda pts, me: _persistence_diagrams(pts, me)
-    else:
-        raise ImportError
-except Exception:
-    # fallback : persistance lite de lct_network (approximation H1)
-    from ratis_net.lct_network import _persistence_diagrams_lite as _pers_lite
-    _PERS_FN = None
+    from ratis_net.persistence_optimizer import compute_persistence, preferred_backend, is_gudhi_available
+except ImportError:
+    # exécution en module direct depuis le dossier ratis_net/
+    from persistence_optimizer import compute_persistence, preferred_backend, is_gudhi_available
+_PERS_FN = compute_persistence
 
 
 def _word_to_cloud(word: str, n_points: int = 40, seed: int = 42) -> np.ndarray:
@@ -90,12 +83,6 @@ def topo_signature(word: str, dim: int = 8, seed: int = 42,
     # diagrammes de persistance
     if _PERS_FN is not None:
         diagrams, _ = _PERS_FN(coords, max_edge)
-    else:
-        # fallback : on n'a que H1 lite (scalaire) → on construit un diagramme
-        # minimal à partir de _persistence_diagrams_lite
-        from ratis_net.lct_network import _persistence_diagrams_lite
-        p_sig = _persistence_diagrams_lite(coords, max_edge)
-        diagrams = {1: [(0.0, p_sig)]} if p_sig > 0 else {1: []}
 
     # extraction des features topologiques
     b0 = sum(1 for b, d in diagrams.get(0, []) if d == float("inf"))
@@ -151,8 +138,13 @@ def topo_signature(word: str, dim: int = 8, seed: int = 42,
 
 
 def is_full_persistence_available() -> bool:
-    """True si le calculateur de persistance complet (gudhi ou cerveau TTF) est dispo."""
+    """True si un backend de persistance complet (GUDHI ou CPU vectorisé) est dispo."""
     return _PERS_FN is not None
+
+
+def active_backend() -> str:
+    """Nom du backend actif (gpu/cpu/lite)."""
+    return preferred_backend()
 
 
 if __name__ == "__main__":
