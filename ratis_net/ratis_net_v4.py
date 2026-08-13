@@ -81,11 +81,17 @@ class RatisNetV4:
             x = x[:self.n_in]
         return x
 
+    def _token_for_eth(self, token_embedding: np.ndarray) -> np.ndarray:
+        """Tronque/pad le token à token_dim pour ETH (qui a sa propre dimension)."""
+        if len(token_embedding) >= self.token_dim:
+            return token_embedding[:self.token_dim]
+        return np.pad(token_embedding, (0, self.token_dim - len(token_embedding)))
+
     def forward(self, token_embedding: np.ndarray, env: ThermoEnvironment,
                 t_step: int = 0) -> dict:
         """Forward v4 : ETH fixe le seuil, collapse garde la marque."""
         # 1. ETH prédit C_seuil pour (token, environnement)
-        c_seuil = self.eth.predict_c_seuil(token_embedding, env)
+        c_seuil = self.eth.predict_c_seuil(self._token_for_eth(token_embedding), env)
         # 2. cohérence C (token-poids sous oscillation)
         W = self._weight_matrix()
         C = compute_coherence(token_embedding, W, t_step, self.omega)
@@ -112,7 +118,7 @@ class RatisNetV4:
         2. Le réseau LCT apprend par ΔW = η·φ·P_sig·C (comme v1).
         """
         # entraîner ETH
-        eth_error = self.eth.train_step(token_embedding, env, target_c_seuil, lr=lr_eth)
+        eth_error = self.eth.train_step(self._token_for_eth(token_embedding), env, target_c_seuil, lr=lr_eth)
         # forward + collapse
         result = self.forward(token_embedding, env, t_step)
         # entraîner le réseau LCT (comme v1) : entrée = token ⊕ env
