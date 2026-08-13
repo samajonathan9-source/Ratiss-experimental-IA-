@@ -223,6 +223,18 @@ class RatisNetV4Learner(Learner):
         out = np.array([n.forward(h, 0) for n in self.net.output])
         return int(np.argmax(out))
 
+    def scores(self, token: np.ndarray, env: ThermoEnvironment) -> np.ndarray:
+        """Vecteur de confiance brut de la couche de sortie (pour le décodeur).
+
+        La confiance pour l'émotion i = out[i]. Plus out[i] est élevé, plus le
+        réseau « croit » que (token, env) exprime l'émotion i. Le décodeur
+        utilise ça pour chercher le mot qui maintient une émotion cible.
+        """
+        x = self.net._build_input(token, env)
+        h = np.array([n.forward(x, 0) for n in self.net.hidden])
+        out = np.array([n.forward(h, 0) for n in self.net.output])
+        return out
+
     def c_seuil_for(self, token: np.ndarray, env: ThermoEnvironment) -> float:
         return self.net.eth.predict_c_seuil(self.net._token_for_eth(token), env)
 
