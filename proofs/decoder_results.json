@@ -1,0 +1,37 @@
+{
+  "generations": {
+    "happy": "haha you are funny and excitefull",
+    "angry": "you are dumb as fuck you",
+    "sad": "i'm not good but i'm not",
+    "others": "what is your name was amazing"
+  },
+  "coherence": {
+    "happy": {
+      "generated": "haha you are funny and excitefull",
+      "reclassified": 0,
+      "target": 1,
+      "coherent": false
+    },
+    "angry": {
+      "generated": "you are dumb as fuck you",
+      "reclassified": 0,
+      "target": 0,
+      "coherent": true
+    },
+    "sad": {
+      "generated": "i'm not good but i'm not",
+      "reclassified": 0,
+      "target": 0,
+      "coherent": true
+    },
+    "others": {
+      "generated": "what is your name was amazing",
+      "reclassified": 2,
+      "target": 2,
+      "coherent": true
+    }
+  },
+  "n_coherent": 3,
+  "acc_train": 0.8828677839851025,
+  "vocab_size": 1332
+}
