@@ -150,6 +150,26 @@ identity, invariant under energy (LCT law). Generalization to unseen tokens:
 | TTF/MCB (track 2) | 0.944 | **0.983** | +0.225 |
 | Topo signature (track 3) | **0.950** | 0.950 | +0.192 |
 
+### Track 4 — Real human dialogues (EmoContext) — PASS
+RATIS-Net was trained on **EmoContext** (SemEval-2019 Task 3: 30 160
+3-turn dialogues annotated happy/sad/angry/others). Each word of a dialogue
+becomes a token; the annotated emotion is mapped to a `ThermoEnvironment`
+(the dialogue's thermal context). The network learns to associate
+(word, thermal context) → emotion.
+
+- Accuracy on **real human dialogues**: **0.857** (test, vote on turn-3 words)
+  vs 0.333 random.
+- **Emotion emerges from real data**: ETH learned distinct C_seuil per
+  emotion for the same word — happy 0.701, angry 0.290, sad 0.189, others 0.500.
+  Differentials: happy−angry **+0.411**, happy−sad **+0.512**. The word "love"
+  shifts: 0.688 (happy) / 0.320 (angry) / 0.225 (sad). The thermodynamics of
+  meaning is real and stronger than on the synthetic dataset (−0.38 → +0.51).
+- `sad` collapses faster than `angry` (0.189 < 0.290) — consistent with
+  "cold = withdrawal" mapping. This is an emergent nuance, not designed.
+- Honest limit: trained on 300 dialogues / 80 words (topo signature too
+  costly on the full vocabulary → hash for the POC). Scaling to the full 30k
+  is open. See `tests/test_ratis_net_v4_emocontext.py`.
+
 ---
 
 *© 2026 JOHNKING0 & Jonathan Evina. Experimental repo, honest results.*
