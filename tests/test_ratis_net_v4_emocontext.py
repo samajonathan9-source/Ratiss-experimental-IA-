@@ -30,7 +30,7 @@ from ratis_net.ratis_net_v4 import RatisNetV4
 from ratis_net.eth_thermo_fixer import ThermoEnvironment
 from ratis_net.emocontext_loader import load_emocontext, build_samples, vocabulary, tokenize, EMO_MAP
 from ratis_net.ttf_bridge import _hash_embedding
-from ratis_net.topo_tokenizer import topo_signature, is_full_persistence_available
+from ratis_net.topo_tokenizer import topo_signature, is_full_persistence_available, active_backend
 
 
 def cache_embeddings(words, embedding_fn, dim):
@@ -148,23 +148,33 @@ def main():
     vocab = vocabulary(train_ex, min_len=2, top_k=80)
     print(f"Vocabulaire (top-80) : {vocab[:12]} ...")
     print(f"Persistance complète dispo : {is_full_persistence_available()}")
-    print("  (topo signature trop coûteuse sur ce vocabulaire → HASH pour la POC)")
+    print(f"  Backend actif : {active_backend()} (GUDHI si dispo → topo rapide)")
 
-    # cache hash
+    # cache : hash ET topo (GUDHI rend la topo abordable maintenant)
     cache_h = {w: _hash_embedding(w, 8) for w in vocab}
+    cache_t = {w: topo_signature(w, 10) for w in vocab} if is_full_persistence_available() else None
 
-    # entraînement
-    samples = build_samples(train_ex, lambda w, d: cache_h.get(w, _hash_embedding(w, d)),
-                            dim=8, per_word=True)
-    print(f"\nEntraînement : {len(samples)} samples (mot, env) → émotion")
-    net = RatisNetV4(n_in=12, n_hidden=20, n_out=3, token_dim=8, env_dim=4, eta=0.1, seed=42)
-    for ep in range(8):
-        correct = 0
-        for tok, env, label, cs in samples:
-            r = net.train_step(tok, env, label, cs, t_step=ep, lr_eth=0.1)
-            correct += r["acc"]
-        if ep % 4 == 0 or ep == 7:
-            print(f"  ep{ep} acc={correct/len(samples):.3f}")
+    # entraînement : on compare hash et topo
+    results = {}
+    last_net = None
+    last_cache = None
+    last_dim = None
+    for name, cache, dim in [("HASH", cache_h, 8), ("TOPO", cache_t, 10)]:
+        if cache is None:
+            continue
+        samples = build_samples(train_ex, lambda w, d: cache.get(w, _hash_embedding(w, d) if name == "HASH" else topo_signature(w, d)),
+                                dim=dim, per_word=True)
+        print(f"\nEntraînement {name} : {len(samples)} samples (mot, env) → émotion")
+        net = RatisNetV4(n_in=12, n_hidden=20, n_out=3, token_dim=8, env_dim=4, eta=0.1, seed=42)
+        for ep in range(8):
+            correct = 0
+            for tok, env, label, cs in samples:
+                r = net.train_step(tok, env, label, cs, t_step=ep, lr_eth=0.1)
+                correct += r["acc"]
+            if ep % 4 == 0 or ep == 7:
+                print(f"  ep{ep} acc={correct/len(samples):.3f}")
+        results[name] = {"acc_train": correct / len(samples), "n_samples": len(samples)}
+        last_net, last_cache, last_dim = net, cache, dim
 
     # évaluation : vote des mots du tour3 sur 20% dialogues non vus
     rng = np.random.RandomState(42)
@@ -178,10 +188,10 @@ def main():
             continue
         votes = []
         for w in words:
-            emb = cache_h.get(w, _hash_embedding(w, 8))
-            x = net._build_input(emb, ex["env"])
-            h = np.array([n.forward(x, 0) for n in net.hidden])
-            out = np.array([n.forward(h, 0) for n in net.output])
+            emb = last_cache.get(w, _hash_embedding(w, 8) if last_dim == 8 else topo_signature(w, 10))
+            x = last_net._build_input(emb, ex["env"])
+            h = np.array([n.forward(x, 0) for n in last_net.hidden])
+            out = np.array([n.forward(h, 0) for n in last_net.output])
             votes.append(int(np.argmax(out)))
         pred = int(np.argmax(np.bincount(votes)))
         if pred == ex["label_num"]:
@@ -193,26 +203,27 @@ def main():
     print(f"\n{'='*72}")
     print(f"BILAN PISTE 4")
     print(f"{'='*72}")
-    print(f"  accuracy train (mot par mot) = {correct/len(samples):.3f}")
-    print(f"  accuracy test  (vote turn3)  = {acc_test:.3f}  (hasard = 0.333)")
+    for name, r in results.items():
+        print(f"  {name:5s} train = {r['acc_train']:.3f}")
+    print(f"  accuracy test (vote turn3, {('TOPO' if cache_t else 'HASH')}) = {acc_test:.3f}  (hasard = 0.333)")
     print(f"  → RATIS-Net apprend l'émotion sur de VRAIS dialogues humains.")
 
     # observation de l'émergence
-    c_seuils = observe_emergence(net, cache_h)
+    c_seuils = observe_emergence(last_net, last_cache)
 
     # observation supplémentaire : un mot à connotation forte
     print(f"\n  Émergence sur un mot émotionnel ('love') :")
     test_word2 = "love"
-    emb2 = cache_h.get(test_word2, _hash_embedding(test_word2, 8))
+    emb2 = last_cache.get(test_word2, _hash_embedding(test_word2, 8) if last_dim == 8 else topo_signature(test_word2, 10))
     for label, (env_cls, _, _) in EMO_MAP.items():
-        c = net.eth.predict_c_seuil(net._token_for_eth(emb2), env_cls())
+        c = last_net.eth.predict_c_seuil(last_net._token_for_eth(emb2), env_cls())
         print(f"    '{test_word2}' + {label:7s} → C_seuil = {c:.3f}")
 
     return {
         "n_dialogues": len(train_ex),
         "labels": dict(labels),
-        "n_samples": len(samples),
-        "acc_train": correct / len(samples),
+        "backend": active_backend(),
+        "results": results,
         "acc_test_vote": acc_test,
         "c_seuils_ok": c_seuils,
     }
