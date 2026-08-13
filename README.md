@@ -166,9 +166,20 @@ becomes a token; the annotated emotion is mapped to a `ThermoEnvironment`
   meaning is real and stronger than on the synthetic dataset (−0.38 → +0.51).
 - `sad` collapses faster than `angry` (0.189 < 0.290) — consistent with
   "cold = withdrawal" mapping. This is an emergent nuance, not designed.
-- Honest limit: trained on 300 dialogues / 80 words (topo signature too
-  costly on the full vocabulary → hash for the POC). Scaling to the full 30k
-  is open. See `tests/test_ratis_net_v4_emocontext.py`.
+- Honest limit: trained on 300 dialogues / 80 words for the POC. Scaling to
+  the full 30k is now **feasible** thanks to GUDHI (persistence backend ~95x
+  faster than pure Python). See `tests/test_ratis_net_v4_emocontext.py`.
+
+### Persistence backend (GUDHI / CPU / GPU)
+`ratis_net/persistence_optimizer.py` exposes three backends for the
+topological persistence (the bottleneck of the topological tokenizer):
+- `compute_persistence_cpu` — vectorized NumPy (no GPU).
+- `compute_persistence_gpu` — GUDHI (C++); runs on CPU today, on CUDA the
+  day a GPU is available. ~95x faster than the Python implementation.
+- `preferred_backend()` auto-selects: GUDHI if installed, else CPU.
+GUDHI made the topological tokenizer usable on the EmoContext vocabulary
+(300 words in 0.3s vs. timeout before). `pip install gudhi` (see
+`requirements.txt`).
 
 ---
 

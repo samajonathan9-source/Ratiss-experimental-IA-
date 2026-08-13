@@ -1,0 +1,12 @@
+# RATIS-Net — Dépendances (frugal, CPU-only par défaut)
+
+numpy>=1.24,<3.0
+scipy>=1.11,<2.0
+
+# Persistance homology (pistes 3-4) : GUDHI est ~95x plus rapide que
+# l'implémentation Python pure. Recommandé pour le vocabulaire EmoContext.
+# Si absent, fallback sur le backend CPU vectorisé (persistence_optimizer).
+gudhi>=3.9
+
+# Datasets conversationnels (piste 4) : aucun package requis, les données
+# EmoContext sont incluses dans data/emocontext/.
