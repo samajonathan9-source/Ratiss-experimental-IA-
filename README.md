@@ -197,6 +197,30 @@ toucher au réseau. Le cœur (LCT, ETH, collapse) reste encapsulé dans
 `RatisNetV4Learner`. Validé : les deux tokenizers reproduisent acc 0.857 +
 émotion émerge. Voir `tests/test_pipeline.py`.
 
+### Décodeur LCT (génération de langage) — PASS (3/4)
+`ratis_net/decoder.py` : la brique qui fait passer RATIS-Net de classifieur
+(**comprendre** : mot+env → émotion) à générateur (**parler** : émotion+env →
+mots). Le décodeur génère une séquence de mots conditionnée par une émotion
+cible, par cohérence topologique (loi LCT) :
+  score(w) = confiance_réseau(émotion cible | w, env) × vraisemblance_transition(w | mot_précédent)
+
+Le modèle de transition (bigramme par émotion) est appris des dialogues
+EmoContext — c'est ce qui donne la vraisemblance linguistique. Le résultat
+n'est pas un LLM (pas de grammaire, pas d'état caché auto-régressif), mais
+le réseau PRODUIT du vrai langage sémantiquement juste :
+
+| émotion cible | phrase générée | re-classée | cible |
+|---|---|---|---|
+| happy | haha you are funny and excitefull | 0 | 1 ✗ |
+| angry | you are dumb as fuck you | 0 | 0 ✓ |
+| sad | i'm not good but i'm not | 0 | 0 ✓ |
+| others | what is your name was amazing | 2 | 2 ✓ |
+
+Cohérence LCT : 3/4. Limite honnête : le re-classage n'est pas parfait
+(happy génère du positif mais le vote retombe sur 0 — le décodage glouton ne
+garantit pas la cohérence topologique de la séquence entière). Voir
+`tests/test_decoder.py`.
+
 ---
 
 *© 2026 JOHNKING0 & Jonathan Evina. Experimental repo, honest results.*
