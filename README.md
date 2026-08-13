@@ -181,6 +181,22 @@ GUDHI made the topological tokenizer usable on the EmoContext vocabulary
 (300 words in 0.3s vs. timeout before). `pip install gudhi` (see
 `requirements.txt`).
 
+### Pipeline branchable (connecteurs) — PASS
+`ratis_net/pipeline.py` découple le pipeline en 4 interfaces pour qu'un
+partenaire se branche sans toucher au cœur :
+
+```
+[DataSource] → [Tokenizer] → [Learner (RATIS-Net LCT)] → [Pipeline.run]
+  EmoContext      Hash/Topo/TTF     RatisNetV4Learner       (éval+émergence)
+  (ou autre       (persistence_     (cœur LCT+ETH+          3 lignes :
+   corpus)         optimizer)        collapse encapsulé)     Pipeline(ds, tok, lr)
+```
+
+Un partenaire change 1 mot pour changer de tokenizer (Hash → Topo), sans
+toucher au réseau. Le cœur (LCT, ETH, collapse) reste encapsulé dans
+`RatisNetV4Learner`. Validé : les deux tokenizers reproduisent acc 0.857 +
+émotion émerge. Voir `tests/test_pipeline.py`.
+
 ---
 
 *© 2026 JOHNKING0 & Jonathan Evina. Experimental repo, honest results.*
