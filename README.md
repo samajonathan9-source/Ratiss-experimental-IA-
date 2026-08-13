@@ -121,7 +121,34 @@ proofs/
 Brick 4 is now solid: v1 proves LCT replaces gradient, v4 (fixed) reaches acc
 1.000 with emotion emerging via the thermo fixer. The open frontier is no
 longer *whether* LCT learns — it's generalization across a larger vocabulary
-(current limit: 2 tokens) and connecting RATIS-Net to the TTF-Compute brain.
+and the tokenizer. Three follow-up tracks were validated:
+
+### Track 1 — Vocabulary generalization (PASS)
+v4 was tested on a 30-word vocabulary with a token-level train/test split
+(24 train / 6 unseen). The network **generalizes** to unseen tokens:
+orthogonal hash embedding → 0.729 (unseen), structured char-n-gram embedding
+→ 0.996 (unseen). The network learned a **rule** (context → label), not a
+memorization. See `tests/test_ratis_net_v4_generalization.py`.
+
+### Track 2 — RATIS-Net ← TTF-Compute brain (PASS)
+A bridge (`ratis_net/ttf_bridge.py`) feeds the network with the **MCB**
+(Memory of Correlation Bits) from the TTF-Compute brain instead of a hash.
+The network now "thinks" with the real topology of the data. Generalization
+to unseen tokens: **0.983** (+0.225 vs hash). The topology helps learning.
+See `tests/test_ratis_net_v4_ttf_bridge.py`.
+
+### Track 3 — Topological tokenizer (PASS)
+A tokenizer (`ratis_net/topo_tokenizer.py`) defines each token by its
+**topological signature** (H1 persistent cycles: Betti, cycle density,
+persistence max/mean/median/std/skew) — not a hash. This is the certifiable
+identity, invariant under energy (LCT law). Generalization to unseen tokens:
+**0.950** (+0.192 vs hash). See `tests/test_ratis_net_v4_topo_tokenizer.py`.
+
+| Tokenizer | seen | unseen | vs hash |
+|---|---|---|---|
+| Hash (track 1) | 0.775 | 0.758 | — |
+| TTF/MCB (track 2) | 0.944 | **0.983** | +0.225 |
+| Topo signature (track 3) | **0.950** | 0.950 | +0.192 |
 
 ---
 
