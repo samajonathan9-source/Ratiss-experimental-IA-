@@ -114,6 +114,7 @@ class RatisAgent:
         self._cache: dict[str, np.ndarray] = {}
         self._vocab: list[str] = []
         self.trained = False
+        self._bigram = None
 
     # ── Embedding (percevoir) ──────────────────────────────────────────────
     def _embed(self, word: str, dim: int) -> np.ndarray:
@@ -145,7 +146,22 @@ class RatisAgent:
         self.trained = True
         # construire le vocabulaire pour le décodeur
         self._vocab = list(self._cache.keys())
+        # bigramme EmoContext pour la vraisemblance linguistique (parler lisible)
+        self._fit_bigram()
         return {"acc": acc, "epochs": epochs}
+
+    def _fit_bigram(self, max_examples: int = 3000):
+        """Construit le modèle de transition bigramme (vraisemblance linguistique).
+
+        Sans le bigramme, le décodeur génère des mots répétitifs ('it's be just
+        my it's be'). Le bigramme privilégie les transitions réelles des dialogues
+        humains → phrases lisibles, présentables.
+        """
+        try:
+            from ratis_net.decoder import fit_bigram_from_emocontext
+            self._bigram = fit_bigram_from_emocontext(max_examples=max_examples)
+        except Exception:
+            self._bigram = None
 
     def set_vocab(self, examples_dicts, top_k: int = 60):
         """Précalcule le vocabulaire + cache d'embeddings (pour le décodeur)."""
@@ -256,7 +272,7 @@ class RatisAgent:
                 return int(np.argmax(self_.scores(token, e)))
             def c_seuil_for(self_, token, e):
                 return net.eth.predict_c_seuil(net._token_for_eth(token), e)
-        decoder = LCTDecoder(_LearnerAdapter(), self._cache, self._vocab, None)
+        decoder = LCTDecoder(_LearnerAdapter(), self._cache, self._vocab, self._bigram)
         seq = decoder.generate_beam(emo_eng, env, length=6, beam_width=4)
         return " ".join(seq)
 
