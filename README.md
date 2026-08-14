@@ -15,6 +15,87 @@ learns by topological coherence.
 
 ---
 
+## 🧠 Architecture visuelle (figures de concept)
+
+### La boucle cognitive AGI — 6 étapes (souverain, 100% local)
+
+![Boucle cognitive AGI](docs/figures/fig1_boucle_cognitive.png)
+
+L'agent RATIS (`ratis_agent.py`) enchaîne 6 étapes cognitives, sans cloud ni LLM
+externe : **percevoir** → **penser** (MCB) → **ressentir** (ETH) → **comprendre**
+(LCT) → **parler** (décodeur) → **certifier** (ZK). 6/6 démonstrations certifiées,
+invariance ZK démontrée (même hash de pensée sous 2 énergies ≠).
+
+### La loi LCT — R = P_sig croît avec C, invariant sous l'énergie
+
+![Loi LCT](docs/figures/fig2_loi_lct.png)
+
+- **Monotonie** (gauche) : R croît avec C. Spearman +0.930 (4MZI), +1.000 (quantique), +0.713 (QPU IBM).
+- **Invariance ZK** (droite) : R constant sous énergies ≠ (CV = 0.0000). On certifie la **forme**, pas le **courant**.
+
+### Le cerveau TTF-Compute
+
+![Cerveau TTF](docs/figures/fig3_cerveau_ttf.png)
+
+Graphe intriqué → transmetteur tJ → traducteur Rips → RLM (ΔW = η·φ·P_sig·C) →
+MCB (pensée sans mots) → puits d'effondrement + TSP → ZK-STARK.
+
+### Le saut v4 — ETH, le fixeur thermodynamique (l'émotion émerge)
+
+![ETH thermo](docs/figures/fig4_eth_thermo.png)
+
+ETH apprend C_seuil = f(token, env) — un seuil **contextuel**. "bonjour colère" →
+C_seuil 0.310, "bonjour joie" → 0.691. L'émotion = différentiel de C_seuil (+0.380).
+
+### Le décodeur — 3 modes de décodage
+
+![Décodeur](docs/figures/fig5_decodeur_modes.png)
+
+Glouton (3/4) → auto-régressif (état caché) → **beam search (4/4, happy débloqué)**.
+Le beam maintient la cohérence topologique de la **séquence entière**.
+
+### happy DÉBLOQUÉ — unité SÉQUENCE + rééquilibrage
+
+![happy débloqué](docs/figures/fig6_happy_debloque.png)
+
+Rappel happy : **0% → 85%**. F1 macro : **0.62 → 0.92**. L'entraînement par
+séquence (la forme du message, pas chaque mot) + le rééquilibrage ont levé le verrou.
+
+### L'immersion structurée accélérée (auto-génération ancrée)
+
+![Immersion](docs/figures/fig7_immersion_acceleree.png)
+
+Self-play ancré sur EmoContext (pas dans le vide) + double filtre (ZK forme +
+sémantique re-classage) → réinjection. Garde-fous anti-mode-collapse. Gain mesuré : F1 ×1.01.
+
+### L'universalité de la loi LCT
+
+![Universalité](docs/figures/fig8_universalite_lct.png)
+
+**Invariance ZK : 3/3 PASS** (universelle). **Monotonie : 1/3** — le cristal (+0.93)
+suit la loi, le réseau social non. Borne honnête : la monotonie exige une structure
+**distribuée**, pas concentrée.
+
+### RATIS face à l'inconnu
+
+![Inconnu](docs/figures/fig9_inconnu.png)
+
+LLM = **mémorisation** (peut halluciner). RATIS = **projection topologique** (ne
+hallucine pas). Robustesse 6/6, généralise les variantes proches, prudent sur les
+concepts radicaux — sans faire semblant de connaître.
+
+### Architecture des 2 dépôts
+
+![Architecture](docs/figures/fig10_architecture.png)
+
+**RATISS-ODV-AEON** (cerveau moteur) ↔ **Ratiss-experimental-IA-** (réseau IA),
+connectés par le bridge MCB. Les 4 briques AGI complètes : cerveau topo ✓, ZK ✓,
+souveraineté ✓, LCT (apprend, ressent, parle, certifie) ✓.
+
+> Les figures sont régénérables : `python scripts/generate_concept_figures.py`
+
+---
+
 ## Results (honest, 3 iterations)
 
 | Version | Rule | Accuracy (Iris) | P_sig | Verdict |
