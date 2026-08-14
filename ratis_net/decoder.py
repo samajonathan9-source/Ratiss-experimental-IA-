@@ -148,7 +148,14 @@ class LCTDecoder:
 
     def generate_greedy(self, target_emotion: str, env: ThermoEnvironment,
                         length: int = 8, repeat_penalty: float = 0.3) -> list[str]:
-        """Variante déterministe (glouton) : le mot de plus haut score à chaque pas."""
+        """Variante déterministe (glouton) : le mot de plus haut score à chaque pas.
+
+        Limite honnête : optimise le score LOCAL (mot par mot), pas la cohérence
+        GLOBALE de la séquence. L'émotion cible peut être noyée par les mots
+        dominants d'une autre classe (ex: "you are" → classe négative, même pour
+        une cible happy). Voir generate_autoregressive / generate_beam pour la
+        cohérence de séquence.
+        """
         target_num = EMO_MAP[target_emotion][2]
         words = []
         prev = "<start>"
@@ -164,6 +171,149 @@ class LCTDecoder:
             words.append(best)
             prev = best
         return words
+
+    # ── Piste 1 : décodage auto-régressif avec ÉTAT CACHÉ ─────────────────────
+    #
+    # Le glouton classe chaque mot individuellement et vote à la fin : l'émotion
+    # cible peut être noyée. L'auto-régressif maintient un ÉTAT CACHÉ = la
+    # distribution d'émotions accumulée de la séquence en cours. Quand la
+    # séquence dévie de la cible (trop de mots classés non-cible), un feedback
+    # BOOSTE les mots cible : la cohérence topologique de la séquence ENTIÈRE
+    # gouverne le choix, pas le score local. C'est l'analogue d'un LLM avec état
+    # caché, mais piloté par LCT : on certifie le message (la forme de la
+    # séquence), pas le courant (chaque mot).
+
+    def _word_class(self, word: str, env: ThermoEnvironment) -> int:
+        """Classe prédite du mot seul (pour nourrir l'état caché)."""
+        return self.learner.predict(self.cache[word], env)
+
+    def _seq_embedding(self, words: list[str]) -> np.ndarray:
+        """Embedding d'une SÉQUENCE = moyenne des embeddings de ses mots.
+
+        C'est l'analogue topologique : la séquence entière est une forme, pas
+        la somme de mots isolés. La moyenne des embeddings capture la dominante
+        sémantique de la phrase (un mot happy + des mots neutres penche vers
+        happy, contrairement au vote qui compte chaque mot 1/1).
+        """
+        embs = [self.cache[w] for w in words if w in self.cache]
+        if not embs:
+            rng = np.random.default_rng(0)
+            return rng.normal(0, 1, next(iter(self.cache.values())).shape[0])
+        # moyenne pondérée par la norme (les mots saillants pèsent plus)
+        arr = np.array(embs)
+        norms = np.linalg.norm(arr, axis=1, keepdims=True)
+        norms[norms < 1e-9] = 1.0
+        weighted = (arr * norms).sum(axis=0) / norms.sum()
+        n = np.linalg.norm(weighted)
+        return weighted / n if n > 1e-9 else weighted
+
+    def generate_autoregressive(self, target_emotion: str, env: ThermoEnvironment,
+                                length: int = 8, repeat_penalty: float = 0.3,
+                                feedback_strength: float = 2.0,
+                                min_target_frac: float = 0.5) -> list[str]:
+        """Décodage auto-régressif : un état caché VECTEUR maintient la cohérence.
+
+        État caché = embedding de la séquence partielle en cours (moyenne des
+        mots générés). À chaque pas :
+          1. on classe l'état caché courant (la séquence partielle vue comme
+             un tout — c'est la métrique LCT : la forme, pas chaque mot).
+          2. si la séquence partielle dévie de la cible, un feedback BOOSTE les
+             candidats qui ramènent l'état caché vers la cible : G(w) = confiance
+             que (état_caché ⊕ w) soit classé cible.
+
+        La cohérence topologique de la séquence ENTIÈRE gouverne le choix —
+        l'émotion cible ne peut plus être noyée par les mots neutres fréquents
+        (le défaut du glouton sur happy, où "you"/"are" sont classés angry par
+        fréquence du corpus). On certifie le message (la forme de la séquence),
+        pas le courant (chaque mot).
+
+        Args:
+            feedback_strength: poids du feedback quand l'état caché dévie. 0
+                = glouton (état caché désactivé).
+            min_target_frac: seuil de confiance (softmax) de la cible en
+                dessous duquel le feedback s'active.
+        """
+        target_num = EMO_MAP[target_emotion][2]
+        words = []
+        prev = "<start>"
+        for step in range(length):
+            # état caché = séquence partielle actuelle
+            state = self._seq_embedding(words) if words else None
+            # confiance de l'état caché courant dans la cible
+            if state is not None:
+                state_scores = self.learner.scores(state, env)
+                state_scores = state_scores - state_scores.min()
+                expv = np.exp(state_scores)
+                state_probs = expv / (expv.sum() + 1e-9)
+                state_conf_target = float(state_probs[target_num])
+            else:
+                state_conf_target = 0.0
+            # besoin de feedback : élevé si l'état caché dévie (confiance cible basse)
+            besoin = max(0.0, min_target_frac - state_conf_target)
+
+            best, best_score = None, -1.0
+            for w in self.vocab:
+                conf = self._score_word(w, target_num, env)
+                trans = self.bigram.prob(target_emotion, prev, w) if self.bigram else 1.0
+                rep = repeat_penalty if w in words[-3:] else 1.0
+                # feedback : confiance que l'état caché ÉTENDU par w soit cible
+                if words:
+                    ext_state = self._seq_embedding(words + [w])
+                    ext_scores = self.learner.scores(ext_state, env)
+                    ext_scores = ext_scores - ext_scores.min()
+                    expv = np.exp(ext_scores)
+                    ext_probs = expv / (expv.sum() + 1e-9)
+                    ext_conf = float(ext_probs[target_num])
+                    gate = 1.0 + feedback_strength * besoin * (ext_conf - state_conf_target)
+                else:
+                    gate = 1.0
+                s = conf * trans * rep * max(gate, 1e-6)
+                if s > best_score:
+                    best, best_score = w, s
+            words.append(best)
+            prev = best
+        return words
+
+    def generate_beam(self, target_emotion: str, env: ThermoEnvironment,
+                      length: int = 8, beam_width: int = 4,
+                      repeat_penalty: float = 0.3,
+                      coherence_weight: float = 3.0) -> list[str]:
+        """Beam search : explore K séquences, garde la plus cohérente GLOBALEMENT.
+
+        À chaque pas, on étend chaque beam avec chaque mot candidat et on score
+        le beam étendu. Le score = somme des confiances LCT (cible, par mot) +
+        vraisemblance bigramme + cohérence de la SÉQUENCE partielle (confiance
+        que l'embedding de la séquence partielle soit classée cible). On garde
+        les K beams de score total maximal.
+
+        La cohérence de séquence est mesurée sur l'ÉTAT CACHÉ (l'embedding moyen
+        de la séquence partielle), pas sur un vote de mots individuels : on
+        certifie la forme de la séquence (le message), pas chaque mot (le courant).
+        """
+        target_num = EMO_MAP[target_emotion][2]
+        # un beam = (mots, prev, score_total, state_embedding)
+        beams = [([], "<start>", 0.0, None)]
+        for step in range(length):
+            expanded = []
+            for words, prev, score, state in beams:
+                for w in self.vocab:
+                    conf = self._score_word(w, target_num, env)
+                    trans = self.bigram.prob(target_emotion, prev, w) if self.bigram else 1.0
+                    rep = repeat_penalty if w in words[-3:] else 1.0
+                    # état caché étendu = séquence partielle + w
+                    ext_state = self._seq_embedding(words + [w])
+                    ext_scores = self.learner.scores(ext_state, env)
+                    ext_scores = ext_scores - ext_scores.min()
+                    expv = np.exp(ext_scores)
+                    ext_probs = expv / (expv.sum() + 1e-9)
+                    seq_conf = float(ext_probs[target_num])
+                    local = conf * trans * rep
+                    coherence_bonus = coherence_weight * seq_conf
+                    new_score = score + local + coherence_bonus
+                    expanded.append((words + [w], w, new_score, ext_state))
+            expanded.sort(key=lambda x: -x[2])
+            beams = expanded[:beam_width]
+        return beams[0][0]
 
 
 def fit_bigram_from_emocontext(data_path: str | Path | None = None,
