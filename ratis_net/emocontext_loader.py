@@ -100,6 +100,65 @@ def build_samples(examples: list[dict], embedding_fn, dim: int = 8,
     return samples
 
 
+def build_sequence_samples(examples: list[dict], embedding_fn, dim: int = 8,
+                           turn: str = "turn3", min_words: int = 2) -> list[tuple]:
+    """Construit des samples d'entraînement par SÉQUENCE (piste 2).
+
+    Chaque sample = un DIALOGUE (pas un mot). Le token = l'embedding de la
+    SÉQUENCE entière du tour demandé, obtenu par pool des embeddings de ses
+    mots (moyenne pondérée par la norme). L'émotion = l'émotion annotée du
+    dialogue. Le réseau apprend alors à classer une SÉQUENCE, pas des mots
+    isolés — c'est l'unité d'apprentissage fidèle à LCT (la forme du message,
+    pas chaque mot = le courant).
+
+    C'est la clé pour débloquer happy : le classifieur mot-à-mot noie happy
+    (minoritaire, 14% du corpus) car les mots neutres sont classés par
+    fréquence de classe. En classant la SÉQUENCE, un dialogue happy contient
+    une dominante de mots happy → la séquence est classée happy.
+
+    Args:
+        turn: tour à utiliser ("turn3" = réponse finale, la plus annotée).
+        min_words: ignore les séquences trop courtes (bruit).
+    """
+    samples = []
+    for ex in examples:
+        words = tokenize(ex[turn])
+        if len(words) < min_words:
+            continue
+        embs = np.array([embedding_fn(w, dim) for w in words])
+        # pool : moyenne pondérée par la norme (les mots saillants pèsent plus)
+        norms = np.linalg.norm(embs, axis=1, keepdims=True)
+        norms[norms < 1e-9] = 1.0
+        seq_emb = (embs * norms).sum(axis=0) / norms.sum()
+        n = np.linalg.norm(seq_emb)
+        seq_emb = seq_emb / n if n > 1e-9 else seq_emb
+        samples.append((seq_emb, ex["env"], ex["label_num"], ex["c_seuil"]))
+    return samples
+
+
+def balance_classes(samples: list[tuple], seed: int = 42) -> list[tuple]:
+    """Rééquilibre les classes par undersampling (piste 2).
+
+    Le corpus EmoContext est déséquilibré (others 50%, happy 14%). Un réseau
+    entraîné tel quel apprend la classe majoritaire. L'undersampling ramène
+    toutes les classes au cardinal de la classe minoritaire — chaque émotion
+    pèse autant dans l'apprentissage. La loi LCT (ΔW = η·φ·P_sig·C) est
+    inchangée ; on agit sur les données, pas sur la règle.
+    """
+    from collections import defaultdict
+    by_class = defaultdict(list)
+    for s in samples:
+        by_class[s[2]].append(s)
+    n_min = min(len(v) for v in by_class.values())
+    rng = np.random.RandomState(seed)
+    balanced = []
+    for cls, items in by_class.items():
+        idx = rng.choice(len(items), size=n_min, replace=False)
+        balanced.extend(items[i] for i in idx)
+    rng.shuffle(balanced)
+    return balanced
+
+
 def vocabulary(examples: list[dict], min_len: int = 2, top_k: int | None = None) -> list[str]:
     """Extrait le vocabulaire (mots uniques) des exemples, trié par fréquence."""
     from collections import Counter
