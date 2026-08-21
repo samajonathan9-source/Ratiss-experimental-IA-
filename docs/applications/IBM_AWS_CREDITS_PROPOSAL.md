@@ -110,6 +110,25 @@ non-IBM backends, as independent replication evidence for the preprint.
 
 ---
 
+## Admissibilité & contacts (documentés)
+
+**Statut actuel : (C) aucune des deux voies n'est encore disponible.** Jonathan doit
+confirmer ci-dessous ; jamais, jamais quelque chose de soumis sans attestation.
+
+**Contacts déclarés (identité publique, pas d'identifiants privés) :**
+- ORCID : https://orcid.org/0009-0000-4092-5313
+- GitHub : https://github.com/evinajonathan13-max
+- Email public du dossier : evinajonathan13@gmail.com
+- Dossier OSF/preprint : https://doi.org/10.17605/OSF.IO/WF7QM
+
+**Documents LinkedIn (copie manuelle, pas de mot de passe, pas d'auth)** — deux
+brouillons valides (/workspace) avec textes (titre, Infos, À la une). Zéro
+revendication de validation à 156 qubits ; limitations explicites.
+
+Si un PI éligible arrive, toute cette proposition sera réécrite au nom du PI ;
+si RATISS statut formel arrive, elle sera réécrite au nom du statut. Rien de soumis
+sans l'attestation de Jonathan et son accord explicite pour chaque champ.
+
 ## Prochaine étape (Action)
 
 1. Jonathan remplit le formulaire IBM avec la section EN (≈ 500 mots) ci-dessus.
