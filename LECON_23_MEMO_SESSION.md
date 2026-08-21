@@ -27,8 +27,11 @@ La loi LCT est FIGÉE (R = P_sig, ΔW = η·φ·P_sig·C). Ne la change jamais.
    - ratis_net/topo_tokenizer.py : tokenisation par cycles H1 (P_sig, betti, histogramme)
    - ratis_net/ttf_bridge.py : bridge vers cerveau TTF d'AEON
    - ratis_net/emocontext_loader.py : loader + build_sequence_samples + balance_classes
-   - ratis_net/decoder.py : décodeur LCT (glouton + beam) — PAS ENCORE BRANCHÉ sur le SNN
-   - ratis_net/ratis_net_v4.py : v4 (+ETH thermo fixer + collapse)
+   - ratis_net/decoder.py : décodeur LCT (glouton + beam) — **BRANCHÉ** (voir suite ci-dessous)
+   - ratis_net/topo_cache.py : cache des signatures (P_sig lookup O(1), commité)
+   - ratis_net/cached_tokenizer.py : Tokenizer Pipeline branché sur le cache
+   - ratis_net/ratis_net_v4.py : v4 (mesuré — voir limite honnête + suite)
+   - data/cache/topo_signatures.* : cache complet 15 122 mots (559 Ko, commité)
    - data/emocontext/ : EmoContext (SemEval 2019, 30160 dialogues, 3 tours, 4 émotions)
 
 3. **Porte-folio-Jonathan-** (public) — Portfolio + Preprint LCT + Projet Warp + RATISS-Snn
@@ -111,22 +114,34 @@ torch (CPU), snntorch, numpy, scipy, gudhi, sympy, scikit-learn, matplotlib, net
 ## LIMITES HONNÊTES (documentées, à connaître)
 
 1. **RATISS-Snn Iris** : plateau à 70% (limite Hebbienne sur classes non-linéairement séparables)
-2. **RATISS-Snn EmoContext** : 53% (prédit majoritairement happy, le réseau ne "parle" pas encore)
-3. **Le décodeur LCT** (decoder.py) n'est PAS encore branché sur le SNN — c'est la prochaine étape pour "parler"
-4. **P_sig est coûteux** (GUDHI) — le Snapshot Topologique aide mais le cache des signatures est à implémenter
+2. **RATISS-Snn EmoContext** : 53% (prédit majoritairement happy)
+3. ~~**Le décodeur LCT** non branché~~ → **BRANCHÉ maintenant** (voir suite ci-dessous)
+4. ~~**P_sig est coûteux**~~ → **RÉSOLU par cache** (commité, lookup O(1))
 5. **Crédits QPU IBM quasi épuisés** — CPU d'abord
 6. **GITHUB_TOKEN sans scope repo** — Jonathan crée les dépôts manuellement
+
+### Nouvelle limite honnête (session cache-décodeur) :
+7. **RatisNetV4 n'apprend pas sur embeddings seuls** — testé en sweep complet
+   (η 0.05–0.2, hidden 20–40, epochs 6–80) → prédiction 100% classe dominante.
+   Découverte : une fuite du label passait via l'environnement (acc 1.000
+   triviale). Corrigée par env neutre à l'éval → learner mesuré = 0.501.
 
 ---
 
 ## PISTES OUVERTES (prochaines étapes)
 
-1. **Brancher le décodeur LCT** (decoder.py) sur la sortie du SNN → l'IA "parle"
-2. **Cache des topo_signatures** (pré-calculer une fois pour 30160 dialogues)
+1. ~~**Brancher le décodeur**~~ → **RÉALISÉ** (greedy+beam pour 4 émotions)
+2. ~~**Cache topo_signatures**~~ → **RÉALISÉ** (commité, 15 122 mots, 559 Ko)
 3. **Architecture 3+ couches** pour dépasser le plateau Iris (inhibition latérale + profondeur)
 4. **EmoContext complet** (30160 dialogues) avec cache + GPU (Colab gratuit = T4)
 5. **Couche d'embedding apprenable** (au lieu de topo_tokenizer figé)
 6. **BEC analog gravity** : protocole expérimental du preprint §10 (trouver un labo partenaire)
+
+### Piste suivante (la vraie, pas feinte) :
+7. **Learner qui discrimine SANS fuite environnementale** — multi-couches ou
+   embedding apprenable. Le branchement décodeur est stable et attend ; les
+   signatures sont en cache (O(1)) ; il ne reste qu'un learner réel plus fort
+   que les centroïdes (acc 0.501 honnête actuelle).
 
 ---
 
@@ -142,9 +157,49 @@ torch (CPU), snntorch, numpy, scipy, gudhi, sympy, scikit-learn, matplotlib, net
 
 ---
 
+## SUITE RÉALISÉE (session cache-décodeur, visible — PRs listées)
+
+Cette session a poussé les avancées jusqu'à **RATISS-Net parle** (4 émotions). Deux PRs sur ce dépôt :
+
+- **PR #12** https://github.com/evinajonathan13-max/Ratiss-experimental-IA-/pull/12 (**MERGÉ**)
+  1. Cache des signatures topo : 15 122 mots calculés une fois (537s), reload 0.03s.
+      Cache commité (559 Ko). Résout « P_sig coûteux ».
+  2. Décodeur branché sur learner mesuré (centroïdes) : greedy + beam
+      pour les **4 émotions** (ex : happy→« haha you are so funny too »,
+      sad→« my girlfriend left me alone please »). Mesure honnête : acc 0.501 (hasard 0.33).
+  3. Découverte honnête documentée : fuite du label via environnement (corrigée),
+      sweep v4 complet mesuré → dominance 100% « others », loi LCT intacte.
+- **PR #13** https://github.com/evinajonathan13-max/Ratiss-experimental-IA-/pull/13 (ouverte)
+  Doc illustrée : `docs/EVOLUTION_RATIS_NET.md` + 5 figures générées (
+      flow pipeline, speedup cache, histoire accuracy, matrice de confusion,
+      table 4 émotions) + script de régénération. Compile ce chemin complet.
+
+Fichiers nouveaux apportés (jamais de fichier existant modifié sans autorisation) :
+`ratis_net/topo_cache.py`, `ratis_net/cached_tokenizer.py`,
+`scripts/cache_topo_signatures.py`, `scripts/train_emocontext_v4.py`,
+`scripts/decode_with_cache.py`, `scripts/decode_trained.py`,
+`scripts/generate_evolution_figures.py`, `tests/test_topo_cache.py`,
+`docs/TOPO_CACHE.md`, `docs/SPEAKING.md`, `docs/EVOLUTION_RATIS_NET.md`.
+
+Reprise : lis d'abord `docs/EVOLUTION_RATIS_NET.md` pour le tableau complet des
+résultats, puis utilise les CLI ci-dessous. Le prochaine étape réelle = un
+learner qui discrimine sur embeddings seuls (multi-couches ou embedding
+apprenable) — le branchement décodeur est stable et attend.
+
+---
+
 ## COMMANDES UTILES (CPU-only)
 
 ```bash
+# Cache topo (regénérer, une seule fois)
+python scripts/cache_topo_signatures.py
+
+# Parler : décodeur branché sur learner mesuré (4 émotions)
+python scripts/decode_trained.py --emotion happy --n-words 8
+
+# Tests cache
+python tests/test_topo_cache.py
+
 # RATISS-Snn (Iris)
 cd Porte-folio-Jonathan-/ratis_snn && python ratis_snn_lct.py
 
