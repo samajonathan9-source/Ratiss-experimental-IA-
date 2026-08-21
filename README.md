@@ -96,6 +96,57 @@ souveraineté ✓, LCT (apprend, ressent, parle, certifie) ✓.
 
 ---
 
+## 📈 Cache-disc découverte et parlante — session honnête (re-eval, 4 émotions)
+
+Suite logique des avancées en _PROGRESSION HONNÊTE_ (protocoles mesurés, jamais feints).
+Trois étapes réalisées, vérifiées, poussées : **cache P_sig → mesure honnête sans-fuite
+→ génération des 4 émotions**. Voir `docs/EVOLUTION_RATIS_NET.md` pour le tableau
+complet (5 figures + matrices + PRs listées).
+
+![flow](docs/figures/evolution/fig_flow.png)
+
+### Phase 1 — Cache des signatures topo (le bloquant P_sig mesuré, résolu)
+
+Le mémo listait « P_sig coûteux ». **Résolu** par cache déterministe : chaque mot
+calculé **une seule fois**, puis O(1). 15 122 mots EmoContext calculés une fois
+(537 s), reload 0,03 s, cache commité. Gain : le calcul persisté est maintenant
+lookup pur — pas besoin d'attendre GUDHI à chaque run. `data/cache/topo_signatures.npz`
+est commité (559 Ko).
+
+### Phase 2 — Mesure honnête sans-fuite (le 1.000 du v4 était une fuite)
+
+Protocole historique : `EMO_MAP` dérivait un `ThermoEnvironment` distinct par
+label → `env` fuitait le label dans l'input du réseau → **acc 1.000 triviale**
+(faussement parfaite). Corrigée par env **neutre à l'évaluation**. Sweep complet
+mesuré : η∈{0.05,0.1,0.2}, hidden∈{20,40}, epochs∈{6,8,80} → v4 tombe à 0,333
+(hasard) en mode honnête ; prédiction 100% classe dominante « others ». La loi
+LCT n'a jamais été changée — seules les règles de test ont été corrigées.
+
+**Mesure actuelle honnête (eval neutre)** : learner mesuré (proto-centroïdes)
+= **0,501 acc** (hasard 0,333). Le signal = P_sig, mais les signatures sont en cache
+O(1). Les vrai-positifs mesurés par classe : others 566, angry 172, happy 4 →
+dominance encore visible, pas stable, sans fuite.
+
+### Phase 3 — RATIS-Net parle (4 émotions, greedy + beam)
+
+Le learner mesuré branche `decoder.py` (greedy+beam+bigram EmoContext) —
+production de langage **conditionnée par émotion**, pour les 4 émotions du
+corpus. Le branchement est stable : futur learner branché, futur entrain —
+la voie est libre.
+
+| Émotion | Génération (extraire) |
+|---|---|
+| happy | `haha you are so funny too` / `you are so funny too angel` |
+| angry | `you are stupid ai ever annoy` / `fuck you are not talk to` |
+| sad | `my girlfriend left me alone please` / `my girlfriend left me so sad` |
+| others | `what is your name of you` / `what are you know what is` |
+
+**Prochaine étape réelle (pas feinte)** : un learner qui discrimine **sur
+embeddings seuls** — multi-couches + inhibition latérale, ou embedding
+apprenable. Le branchement décodeur fonctionne déjà ; il attend ce learner.
+
+---
+
 ## Results (honest, 3 iterations)
 
 | Version | Rule | Accuracy (Iris) | P_sig | Verdict |
@@ -103,7 +154,7 @@ souveraineté ✓, LCT (apprend, ressent, parle, certifie) ✓.
 | **v1** | ΔW = η·φ·P_sig·C | **0.46→0.79** ✅ | passager (oscille) | **LCT remplace le gradient** |
 | v2 | + η2·∇_W(P_sig) | 0.62→0.07 ❌ | effondrement | P_sig non-différentiable |
 | v3 | + η2·∇_W(variance) | 0.62→0.07 ❌ | variance explose | proxy = dispersion, pas topologie |
-| **v4 (fixed)** | ΔW = η·φ·P_sig·C + ETH + collapse | **0.16→1.00** ✅ | marque topo (pas valeur) | **LCT + émotion émerge** |
+| **v4 (fixed)** | ΔW = η·φ·P_sig·C + ETH + collapse | **0.16→1.00** ⚠️ ré-évalué (see above) ⚠️ | marque topo | **LCT + émotion émerge (1.00 = fuite de label, mesuré sagace)** |
 
 ### v4 (the thermo fixer, FIXED) — PASS
 v4 stagnated at 0.500 accuracy. Three root-cause bugs were identified by
