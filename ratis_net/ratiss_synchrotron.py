@@ -168,13 +168,49 @@ class ResonanceEngine:
       - P_sig = persistance du fragment
 
     T faible → bon emboîtement ; T élevé → mauvais emboîtement.
+
+    Si un Scalpel est connecté, le score de résonance combine :
+      - cosine_sim (similarité sémantique GloVe)
+      - scalpel_boost (poids LCT des paires mot-requête ↔ mot-fragment)
+    Le boost repondère les candidats existants ; il ne crée rien de nouveau.
     """
 
     def __init__(self, index: SuperEmbeddingIndex, alpha_0: float = 1.0,
-                 tension_threshold: float = 1.0):
+                 tension_threshold: float = 1.0, scalpel=None,
+                 scalpel_weight: float = 0.3):
         self.index = index
         self.alpha_0 = alpha_0
         self.tension_threshold = tension_threshold
+        self.scalpel = scalpel
+        self.scalpel_weight = scalpel_weight
+
+    def _scalpel_boost(self, query_words: list[str], fragment_words: list[str]) -> float:
+        """Boost basé sur les corrélations LCT apprises par le Scalpel.
+
+        Pour chaque paire (mot_requête, mot_fragment), on récupère le poids LCT
+        dans le Scalpel. Le boost = somme normalisée des poids trouvés.
+        0 si aucune corrélation, positif si le Scalpel a appris ces paires.
+        """
+        if self.scalpel is None:
+            return 0.0
+        total_weight = 0.0
+        n_found = 0
+        for qw in query_words:
+            corrs = self.scalpel.get_correlations(qw)
+            corr_dict = {w: w_val for w, w_val, _ in corrs}
+            for fw in fragment_words:
+                key = self.scalpel._pair_key(qw, fw)
+                if key in corr_dict:
+                    total_weight += corr_dict[key]
+                    n_found += 1
+                elif key in self.scalpel.neurons:
+                    total_weight += self.scalpel.neurons[key].weight
+                    n_found += 1
+        if n_found == 0:
+            return 0.0
+        # normaliser par le nombre de paires testées
+        max_possible = max(1.0, float(max(n.weight for n in self.scalpel.neurons.values())) + 1e-9)
+        return float(total_weight / (n_found * max_possible))
 
     def find_resonant_fragments(self, query_analysis: dict[str, Any],
                                 top_k: int = 5) -> list[ResonanceResult]:
@@ -184,19 +220,25 @@ class ResonanceEngine:
         candidates = self.index.search(pooled, top_k=top_k * 2)
         results = []
         query_psig = float(np.linalg.norm(pooled[self.index.n_glove:])) + 1e-9
+        query_words = query_analysis.get("words", [])
         for frag, sim in candidates:
             # tension topologique : distance entre signatures topo
             stress = float(np.linalg.norm(query_analysis["pooled"][self.index.n_glove:] - frag.topo_signature))
             frag_psig = float(np.linalg.norm(frag.topo_signature)) + 1e-9
             A = self.alpha_0 * query_psig
             tension = stress / (A * frag_psig) if A > 0 and frag_psig > 0 else float("inf")
-            coherence = 1.0 / (1.0 + tension)
+            # boost Scalpel : corrélations LCT apprises entre requête et fragment
+            boost = self._scalpel_boost(query_words, frag.words)
+            # score combiné : cosine + boost (le boost repondère, ne crée pas)
+            combined_sim = sim + self.scalpel_weight * boost
+            coherence = 1.0 / (1.0 + tension) + self.scalpel_weight * boost
+            coherence = float(np.clip(coherence, 0.0, 1.0))
             accepted = tension < self.tension_threshold
-            results.append(ResonanceResult(fragment=frag, cosine_sim=sim,
+            results.append(ResonanceResult(fragment=frag, cosine_sim=combined_sim,
                                              topological_tension=tension,
                                              coherence=coherence, accepted=accepted))
-        # trier par tension croissante (meilleur emboîtement d'abord)
-        results.sort(key=lambda r: r.topological_tension)
+        # trier par score combiné décroissant (cosinus + boost)
+        results.sort(key=lambda r: r.cosine_sim, reverse=True)
         return results[:top_k]
 
 
@@ -256,12 +298,15 @@ class RatissSynchrotron:
 
     def __init__(self, dim: int = 12, n_glove: int = 8,
                  alpha_0: float = 1.0, tension_threshold: float = 1.0,
-                 max_fragments: int = 3, min_coherence: float = 0.3):
+                 max_fragments: int = 3, min_coherence: float = 0.3,
+                 scalpel=None, scalpel_weight: float = 0.3):
         self.tokenizer = GloveTokenizer(dim=dim, n_glove=n_glove)
         self.index = SuperEmbeddingIndex(dim=dim, n_glove=n_glove)
         self.synchrotron = Synchrotron(self.tokenizer)
         self.resonance = ResonanceEngine(self.index, alpha_0=alpha_0,
-                                          tension_threshold=tension_threshold)
+                                          tension_threshold=tension_threshold,
+                                          scalpel=scalpel,
+                                          scalpel_weight=scalpel_weight)
         self.assembler = RatisAssembler(max_fragments=max_fragments,
                                          min_coherence=min_coherence)
 
