@@ -2,3 +2,9 @@ __pycache__/
 *.pyc
 .env
 secrets/
+
+# Large data files (download separately, see data/glove/README.md)
+data/glove/*.txt
+data/glove/*.zip
+data/scalpel_network.pkl
+trained/
