@@ -6,6 +6,7 @@ Ce dossier contient deux banques de gabarits **FR/EN** conçues pour une sélect
 |---|---|---|---:|---:|
 | `dense_syntax_skeletons.json` | Formulations grammaticales structurées | `domain`, `intention`, `register` | Voir `metadata.uncompressed_bytes` | Voir `metadata.entry_count` |
 | `conversation_matrix.json` | Formulations de dialogue social structurées | `social_context`, `intention`, `emotional_layer`, `register` | Voir `metadata.uncompressed_bytes` | Voir `metadata.entry_count` |
+| `ultra_context_map.json` | Carte des corrélations de mots réellement enregistrées par le checkpoint Scalpel Wikipedia | `concept_root` → `co_occurs_with` → `surface_routes` | Environ 400 MiB | Voir `export.included_roots` et `export.included_directed_edges` |
 
 ## Contrat de données
 
@@ -28,3 +29,9 @@ print(entry["fr"])
 ```
 
 Les métadonnées de chaque fichier précisent son format, son nombre d’entrées, son poids brut UTF-8, le contrat de variables, la méthode d’assemblage et les limites d’usage. Les contenus sont des gabarits originaux assemblés localement ; ce ne sont ni un corpus de conversations récoltées, ni un modèle linguistique, ni une promesse de couverture universelle de la grammaire.
+
+## Ultra Context Map
+
+`ultra_context_map.json` est une vue JSON indexée par concept racine, construite en lecture seule à partir de `artifacts/scalpel_wikipedia.pkl`. Chaque arête conserve exactement cinq éléments : le terme voisin, le poids LCT, `P_sig`, la cohérence et le compteur de renforcements. La carte ajoute une fenêtre de contexte à deux mots à partir des voisins les plus forts, ainsi que des chemins de sélection vers les deux banques de gabarits de ce dossier.
+
+> Le checkpoint Scalpel enregistre des **paires de mots**, et non des trigrammes observés. La fenêtre à deux mots est donc une recombinaison locale exploitable par `ratis_net.trigrammar`, pas une affirmation qu’un trigramme historique a été stocké. La carte est volumineuse : un programme doit éviter de la charger entièrement si une recherche ciblée ou un lecteur streaming suffit.
