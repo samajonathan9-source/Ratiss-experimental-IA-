@@ -37,6 +37,7 @@ def _model():
                          verbose=False)
         net.load_knowledge_packs(data / "knowledge_packs", verbose=False)
         net.build_index(verbose=False)
+        net.load_neural_speaker(verbose=False)  # le cerveau parle
         _MODEL = net
     return _MODEL
 
