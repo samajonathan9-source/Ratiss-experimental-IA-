@@ -66,6 +66,7 @@ class RatisNet:
         self._loaded = False
         self._index_built = False
         self._knowledge_packs: dict = {}
+        self._neural: Any | None = None  # NeuralSpeaker (cerveau qui parle)
 
     def load_scalpel(self, path: str | Path = "artifacts/scalpel_wikipedia.pkl",
                      verbose: bool = True) -> None:
@@ -114,6 +115,36 @@ class RatisNet:
             raise RuntimeError("Load Scalpel first with load_scalpel()")
         self.speaker.build_index(verbose=verbose)
         self._index_built = True
+
+    def load_neural_speaker(self,
+                            corpus_path: str | Path | None = None,
+                            verbose: bool = True) -> None:
+        """Charge le speaker neuronal (reconstruction depuis le corpus appris).
+
+        Le réseau v1 active un chemin de concepts ; le corpus ordonné fournit
+        les phrases candidates ; la couverture IDF choisit la meilleure.
+        """
+        from ratis_net.neural_speaker import NeuralSpeaker
+        if corpus_path is None:
+            corpus_path = (Path(__file__).resolve().parents[1]
+                           / "data" / "corpus" / "scalpel_v3_corpus.txt")
+        corpus_path = Path(corpus_path)
+        if not corpus_path.exists():
+            if verbose:
+                print(f"Neural speaker: corpus absent ({corpus_path})")
+            return
+        graph: dict[str, list] = {}
+        for (a, b), n in self.scalpel.neurons.items():
+            graph.setdefault(a, []).append((b, n.weight, n.p_sig,
+                                            n.n_reinforcements))
+            graph.setdefault(b, []).append((a, n.weight, n.p_sig,
+                                            n.n_reinforcements))
+        corpus = [l.strip() for l in open(corpus_path, encoding="utf-8")
+                  if l.strip()]
+        self._neural = NeuralSpeaker(graph, corpus)
+        if verbose:
+            print(f"Neural speaker: {len(corpus):,} phrases apprises, "
+                  f"{len(graph):,} mots dans le graphe")
 
     def concepts(self, word: str, n: int = 10) -> list[str]:
         """Extrait les n concepts les plus pertinents autour d'un mot
@@ -247,6 +278,7 @@ class RatisNet:
                 "web_results": [],
                 "aeon_backend": self.aeon.backend_name,
                 "web_backend": self.web.backend,
+                "neural": None,
             }
 
         # 2. Fait scientifique via AEON (science_core intégré)
@@ -267,6 +299,16 @@ class RatisNet:
             if len(knowledge_facts) >= 5:
                 break
 
+        # 2c. Le cerveau parle : reconstruction neuronale depuis le corpus
+        # appris. Si le réseau reconnaît une phrase couvrant le chemin de
+        # concepts, elle prime sur le gabarit (et sur le fait si la
+        # couverture est forte ET la phrase est une définition du sujet).
+        neural_sentence = None
+        if self._neural is not None:
+            neural = self._neural.speak(query)
+            if neural.get("ok"):
+                neural_sentence = neural
+
         # 3. Si les concepts sont faibles ET pas de knowledge pack, chercher web
         web_results = []
         if len(concepts) < 3 and len(knowledge_facts) < 2:
@@ -277,10 +319,13 @@ class RatisNet:
                     concepts.extend([w for w in words if len(w) > 3])
 
         # 4. Construire la réponse enrichie
-        # Faits vérifiés → réponse propre : faits d'abord, puis les concepts
-        # du corpus en complément (pas de gabarit à slots accolé au fait).
+        # Priorité : cerveau neuronal > faits vérifiés > gabarit.
+        # Le neuronal prime quand il reconnaît une phrase avec une couverture
+        # suffisante — c'est le réseau qui parle, pas une base curée.
         enriched_sentence = result["sentence"]
-        if knowledge_facts:
+        if neural_sentence is not None:
+            enriched_sentence = neural_sentence["sentence"]
+        elif knowledge_facts:
             facts_text = " ".join(f["text"].strip() for f in knowledge_facts[:2])
             if facts_text and facts_text[-1] not in ".!?":
                 facts_text += "."
@@ -316,6 +361,7 @@ class RatisNet:
             "web_results": web_results,
             "aeon_backend": self.aeon.backend_name,
             "web_backend": self.web.backend,
+            "neural": neural_sentence,
         }
 
     def respond_full(self, query: str, language: str | None = None) -> dict[str, Any]:
@@ -332,6 +378,20 @@ class RatisNet:
         chains = find_chains(source, target, self.speaker._index,
                              max_hops=max_hops, max_chains=max_chains)
         return [c.to_dict() for c in chains]
+
+    def speak(self, query: str) -> dict[str, Any]:
+        """Le cerveau parle : reconstruction neuronale depuis le corpus appris.
+
+        À la différence de respond() (faits validés + gabarits), speak()
+        retourne la phrase que le réseau RECONNAIT comme la plus proche de
+        la requête — couverture IDF du chemin de concepts activé.
+        """
+        if self._neural is None:
+            self.load_neural_speaker(verbose=False)
+        if self._neural is None:
+            return {"mode": "neural", "ok": False, "sentence": "",
+                    "reason": "corpus neural absent"}
+        return self._neural.speak(query)
 
     def prove(self, concepts: list[str]) -> dict[str, Any]:
         """Empreinte SHA-256 du sous-graphe de concepts (intégrité, pas ZK)."""
