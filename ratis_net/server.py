@@ -66,7 +66,18 @@ class Handler(BaseHTTPRequestHandler):
             super().log_message(fmt, *args)
 
     def do_GET(self) -> None:  # noqa: N802
-        if self.path.rstrip("/") in ("", "/health"):
+        if self.path.rstrip("/") in ("", "/index.html"):
+            page = Path(__file__).resolve().parent / "static" / "index.html"
+            if page.exists():
+                body = page.read_bytes()
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+            else:
+                self._json({"error": "ui not found"}, 404)
+        elif self.path.rstrip("/") == "/health":
             net = _model()
             self._json({"status": "ok", **net.stats()})
         else:

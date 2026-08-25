@@ -54,7 +54,7 @@ packages = ["ratis_net", "ratis_net.lct_modules"]
 include-package-data = true
 
 [tool.setuptools.package-data]
-ratis_net = ["*.json"]
+ratis_net = ["*.json", "static/*.html"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
