@@ -127,7 +127,12 @@ class RatisNet:
 
     def load_knowledge_packs(self, path: str | Path | None = None,
                              verbose: bool = True) -> None:
-        """Charge les knowledge packs (quantum, bio, math, AI)."""
+        """Charge les knowledge packs (quantum, bio, math, AI).
+
+        Chaque pack contient des relations scientifiques FR/EN avec source
+        et statut de preuve. Le framework peut les consulter pour enrichir
+        les réponses avec des faits validés.
+        """
         import json
         if path is None:
             path = Path(__file__).resolve().parents[1] / "data" / "knowledge_packs"
@@ -136,16 +141,49 @@ class RatisNet:
             if verbose:
                 print(f"Knowledge packs: not found at {path}")
             return
+        # Charger l'index
         index_path = path / "pack_index.json"
         if index_path.exists():
             with open(index_path, encoding="utf-8") as f:
-                self._knowledge_packs = json.load(f)
+                self._knowledge_packs["_index"] = json.load(f)
+        # Charger chaque pack
         for pack_file in path.glob("*_pack.json"):
             domain = pack_file.stem.replace("_pack", "")
             with open(pack_file, encoding="utf-8") as f:
                 self._knowledge_packs[domain] = json.load(f)
         if verbose:
-            print(f"Knowledge packs: {len(self._knowledge_packs)} domains loaded")
+            total_entries = sum(len(v.get("entries", []))
+                                for v in self._knowledge_packs.values()
+                                if isinstance(v, dict))
+            print(f"Knowledge packs: {len(self._knowledge_packs)-1} domains, "
+                  f"{total_entries} entries")
+
+    def lookup_knowledge(self, concept: str, language: str = "en") -> list[dict]:
+        """Cherche un concept dans les knowledge packs.
+
+        Retourne les relations trouvées : [{term, relation, context, text}, ...]
+        """
+        results = []
+        concept_lower = concept.lower()
+        for domain, pack in self._knowledge_packs.items():
+            if domain == "_index" or not isinstance(pack, dict):
+                continue
+            for entry in pack.get("entries", []):
+                root = entry.get("r", "").lower()
+                if concept_lower in root or root in concept_lower:
+                    for rel in entry.get("rel", []):
+                        lang_key = language if language in rel else "en"
+                        results.append({
+                            "domain": domain,
+                            "root": entry.get("r", ""),
+                            "term": rel.get("t", ""),
+                            "relation": rel.get("k", ""),
+                            "context": rel.get("c", ""),
+                            "text": rel.get(lang_key, rel.get("en", "")),
+                            "source": pack.get("sources", ["unknown"]),
+                            "aeon_proof_status": "not_generated",
+                        })
+        return results
 
     def search(self, query: str, n: int = 3) -> list[dict]:
         """Recherche web temps réel (DuckDuckGo ou Google CSE)."""
@@ -181,25 +219,38 @@ class RatisNet:
         result = self.speaker.generate_response(query, language=language)
         concepts = result.get("concepts", [])
 
-        # 2. Fait scientifique via AEON
+        # 2. Fait scientifique via AEON (science_core intégré)
         aeon_fact = self.aeon.query(concepts, scalpel=self.scalpel)
 
-        # 3. Si les concepts sont faibles, chercher sur le web
+        # 2b. Knowledge packs : chercher des faits validés dans les packs
+        knowledge_facts = []
+        for concept in concepts[:5]:
+            facts = self.lookup_knowledge(concept, language=language)
+            knowledge_facts.extend(facts[:3])  # max 3 par concept
+
+        # 3. Si les concepts sont faibles ET pas de knowledge pack, chercher web
         web_results = []
-        if len(concepts) < 3 or aeon_fact.confidence < 0.3:
+        if len(concepts) < 3 and len(knowledge_facts) < 2:
             web_results = self.search(query, n=3)
-            # Injecter les snippets web comme concepts supplémentaires
             for wr in web_results:
                 if wr.get("snippet"):
                     words = wr["snippet"].split()[:5]
                     concepts.extend([w for w in words if len(w) > 3])
 
+        # 4. Construire la réponse enrichie
+        # Si on a des knowledge facts, les injecter dans la phrase
+        enriched_sentence = result["sentence"]
+        if knowledge_facts:
+            first_fact = knowledge_facts[0]
+            enriched_sentence = first_fact["text"] + " " + result["sentence"]
+
         return {
             "query": query,
-            "sentence": result["sentence"],
+            "sentence": enriched_sentence,
             "paragraph": result["paragraph"],
             "concepts": concepts[:10],
             "aeon_fact": aeon_fact.to_dict(),
+            "knowledge_facts": knowledge_facts[:5],
             "web_results": web_results,
             "aeon_backend": self.aeon.backend_name,
             "web_backend": self.web.backend,
