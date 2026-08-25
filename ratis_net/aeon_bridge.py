@@ -43,88 +43,34 @@ class AeonFact:
 
 
 class AeonBridge:
-    """Pont entre RATIS-Net et le cerveau scientifique AEON ODV.
+    """Pont entre RATIS-Net et le cœur scientifique intégré (science_core).
 
-    Permet à RATIS-Net d'interroger AEON pour obtenir :
-      - P_sig d'un nuage de points (persistance topologique)
-      - Mesure LCT (cohérence, monotonicité, invariance)
-      - Validation de monotonicité R(C)
+    TOUT est dans un seul package. Aucune dépendance externe, aucun sys.path
+    vers un autre dépôt. Les fonctions d'AEON ODV (P_sig, LCT, Vietoris-Rips)
+    sont directement dans ratis_net/science_core.py.
 
-    Si AEON n'est pas installé, retombe sur le moteur RATISS local
-    (topology.py du decoherence engine) en mode dégradé.
+    Le bridge est l'interface qui permet à RATIS-Net d'appeler les fonctions
+    scientifiques : compute_p_sig, measure_lct, scan_monotonicity, etc.
     """
 
     def __init__(self, aeon_path: str | Path | None = None,
                  engine_path: str | Path | None = None):
-        self.aeon_path = Path(aeon_path) if aeon_path else None
-        self.engine_path = Path(engine_path) if engine_path else None
-        self._aeon_available = False
-        self._engine_available = False
-        self._measure_lct = None
-        self._rips_persistence = None
-        self._detect_backends()
-
-    def _detect_backends(self) -> None:
-        """Détecte quel backend scientifique est disponible."""
-        # 1. AEON (kernel.ttf)
-        if self.aeon_path and (self.aeon_path / "kernel" / "ttf" / "lct_law.py").exists():
-            try:
-                sys.path.insert(0, str(self.aeon_path))
-                from kernel.ttf.lct_law import measure_lct, _lct_p_sig
-                self._measure_lct = measure_lct
-                self._lct_p_sig = _lct_p_sig
-                self._aeon_available = True
-            except Exception:
-                pass
-        # 2. Engine (ratiss-topological-decoherence-engine)
-        if self.engine_path and (self.engine_path / "ratiss_topological_decoherence" / "topology.py").exists():
-            try:
-                sys.path.insert(0, str(self.engine_path))
-                from ratiss_topological_decoherence.topology import rips_persistence
-                self._rips_persistence = rips_persistence
-                self._engine_available = True
-            except Exception:
-                pass
+        # aeon_path et engine_path sont ignorés — tout est intégré.
+        # Conservés pour compatibilité API mais non utilisés.
+        self._available = True  # toujours disponible (intégré)
 
     @property
     def available(self) -> bool:
-        """True si au moins un backend scientifique est disponible."""
-        return self._aeon_available or self._engine_available
+        return True
 
     @property
     def backend_name(self) -> str:
-        if self._aeon_available:
-            return "aeon_odv"
-        if self._engine_available:
-            return "ratiss_engine"
-        return "none"
+        return "integrated_science_core"
 
     def compute_p_sig(self, points: np.ndarray, max_edge: float = 2.0) -> float:
-        """Calcule P_sig (persistance du cycle H1 le plus long) d'un nuage de points."""
-        points = np.asarray(points, dtype=float)
-        if points.ndim != 2 or points.shape[0] < 4:
-            return 0.0
-        # Calculer la matrice de distance
-        delta = points[:, None, :] - points[None, :, :]
-        distance = np.linalg.norm(delta, axis=2)
-        np.fill_diagonal(distance, 0.0)
-        # AEON
-        if self._aeon_available:
-            try:
-                from kernel.ttf.ttf_compute import _persistence_diagrams
-                diagrams, _ = _persistence_diagrams(points, max_edge)
-                return float(self._lct_p_sig(diagrams))
-            except Exception:
-                pass
-        # Engine
-        if self._engine_available:
-            try:
-                result = self._rips_persistence(distance, max_edge=max_edge)
-                return float(result["psig"])
-            except Exception:
-                pass
-        # Fallback : calcul local (Vietoris-Rips maison)
-        return self._local_p_sig(distance, max_edge)
+        """Calcule P_sig via science_core (Vietoris-Rips GF(2) intégré)."""
+        from ratis_net.science_core import compute_p_sig
+        return compute_p_sig(points, max_edge=max_edge)
 
     def _local_p_sig(self, distance: np.ndarray, max_edge: float) -> float:
         """Calcul local de P_sig si aucun backend n'est disponible."""
@@ -181,17 +127,12 @@ class AeonBridge:
 
     def validate_monotonicity(self, coords: np.ndarray) -> dict:
         """Valide la monotonicité R(C) de la loi LCT sur des coordonnées."""
-        if self._aeon_available:
-            try:
-                from kernel.ttf.lct_law import scan_monotonicity, evaluate_monotonicity
-                measurements = scan_monotonicity(coords)
-                result = evaluate_monotonicity(measurements)
-                return {"valid": result.get("monotone", False),
-                        "spearman": result.get("spearman", 0.0),
-                        "source": "aeon_odv"}
-            except Exception:
-                pass
-        return {"valid": None, "spearman": None, "source": "unavailable"}
+        from ratis_net.science_core import scan_monotonicity, evaluate_monotonicity
+        measurements = scan_monotonicity(coords)
+        result = evaluate_monotonicity(measurements)
+        return {"valid": result.get("monotone", False),
+                "spearman": result.get("spearman", 0.0),
+                "source": "integrated_science_core"}
 
 
 if __name__ == "__main__":

@@ -53,11 +53,12 @@ class RatisNet:
     def __init__(self, dim: int = 12, n_glove: int = 8, seed: int = 42,
                  aeon_path: str | Path | None = None,
                  engine_path: str | Path | None = None):
+        # aeon_path/engine_path ignorés : tout est intégré dans science_core.py
         self.tokenizer = GloveTokenizer(dim=dim, n_glove=n_glove)
         self.scalpel = ScalpelLayer(self.tokenizer, eta=0.1,
                                      coherence_threshold=0.3, seed=seed)
         self.speaker = SkeletonSpeaker(self.scalpel, seed=seed)
-        self.aeon = AeonBridge(aeon_path=aeon_path, engine_path=engine_path)
+        self.aeon = AeonBridge()  # toujours disponible (intégré)
         self.web = WebSearchModule()
         self._loaded = False
         self._index_built = False
