@@ -182,9 +182,34 @@ Scalpel (294 MB, Git LFS). Faire `git lfs pull` avant de tester.
 7. **Le Scalpel fait 294 MB** — nécessite Git LFS pour télécharger.
 8. **Google CSE non testé** — pas de clé API Google fournie. DuckDuckGo fonctionne.
 
----
+## TESTS SCIENTIFIQUES (10 questions)
 
-## FICHIERS IMPORTANTS
+Testé avec un Scalpel local (2903 neurones, 500 phrases — le checkpoint 294MB
+n'est pas téléchargeable dans la sandbox, token LFS expire).
+
+Résultats : tous les composants actifs (Scalpel + AEON + Web + KP + grammar).
+Les phrases sont générées mais les concepts sont faibles avec seulement 2903
+neurones. Le checkpoint complet (3.78M neurones) donnerait des résultats
+bien meilleurs (validé précédemment : "consciousness" → "human, critical,
+political").
+
+Le web search s'active automatiquement quand les concepts sont faibles
+(consciousness, protein folding → 3 résultats DuckDuckGo).
+
+## ZK-STARK
+
+**Les preuves ZK-STARK ne sont PAS générées.** Le `science_core` calcule :
+- P_sig (Vietoris-Rips H1) ✅
+- LCT measure (C, R) ✅
+- Monotonicity validation (Spearman) ✅
+- Invariance validation (CV < 5%) ✅
+
+Mais ne produit pas de preuve cryptographique ZK. Le statut reste
+`aeon_proof_status: "not_generated"` dans les knowledge packs. Les preuves ZK
+nécessitent un module cryptographique séparé — non implémenté. C'est une
+prochaine étape possible.
+
+---
 
 | Fichier | Taille | Rôle |
 |---|---|---|
