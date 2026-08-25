@@ -49,16 +49,37 @@ class SkeletonSpeaker:
     4. Le resultat est une phrase grammaticalement correcte.
     """
 
-    def __init__(self, scalpel: ScalpelLayer, skeletons_path: str | Path | None = None,
+    def __init__(self, scalpel: ScalpelLayer,
+                 skeletons_path: str | Path | None = None,
+                 dense_path: str | Path | None = None,
+                 conversation_path: str | Path | None = None,
                  seed: int = 42):
         self.scalpel = scalpel
         self.rng = random.Random(seed)
         self._index: dict[str, list[tuple[str, float, float]]] = {}
         self._indexed = False
 
-        # Charger les squelettes
+        base = Path(__file__).resolve().parent
+
+        # Charger la base dense (13K squelettes) si disponible
+        if dense_path is None:
+            dense_path = base.parent / "data" / "grammar_domains" / "dense_syntax_skeletons.json"
+        self.dense_grammar = None
+        if Path(dense_path).exists():
+            with open(dense_path, encoding="utf-8") as f:
+                self.dense_grammar = json.load(f)
+
+        # Charger la matrice conversationnelle (24K) si disponible
+        if conversation_path is None:
+            conversation_path = base.parent / "data" / "grammar_domains" / "conversation_matrix.json"
+        self.conversation_matrix = None
+        if Path(conversation_path).exists():
+            with open(conversation_path, encoding="utf-8") as f:
+                self.conversation_matrix = json.load(f)
+
+        # Fallback : squelettes simples
         if skeletons_path is None:
-            skeletons_path = Path(__file__).resolve().parent / "syntax_skeletons.json"
+            skeletons_path = base / "syntax_skeletons.json"
         with open(skeletons_path, encoding="utf-8") as f:
             self.skeletons = json.load(f)
 
@@ -98,50 +119,102 @@ class SkeletonSpeaker:
                     break
         return concepts
 
+    def _select_skeleton_dense(self, theme: str, domain: str | None = None,
+                                intention: str | None = None) -> dict | None:
+        """Choisit un squelette dans la base dense (13K entrees)."""
+        if self.dense_grammar is None:
+            return None
+        domains = self.dense_grammar.get("domains", {})
+        # Mapper le theme vers un domaine
+        if domain is None:
+            domain = self._theme_to_domain(theme)
+        if domain not in domains:
+            # fallback : scientific
+            domain = "scientific" if "scientific" in domains else list(domains.keys())[0]
+        intentions = domains[domain]
+        if intention is None:
+            intention = self.rng.choice(list(intentions.keys()))
+        if intention not in intentions:
+            intention = list(intentions.keys())[0]
+        entries = intentions[intention]
+        if entries:
+            return self.rng.choice(entries)
+        return None
+
+    def _theme_to_domain(self, theme: str) -> str:
+        """Mappe un mot-thème vers un domaine de la base dense."""
+        domain_map = {
+            "quantum": "quantum_information", "physics": "scientific",
+            "science": "scientific", "mathematics": "mathematics",
+            "math": "mathematics", "love": "emotional_reflection",
+            "emotion": "emotional_reflection", "brain": "medicine",
+            "neural": "medicine", "gravity": "scientific",
+            "chemistry": "scientific", "biology": "scientific",
+            "history": "history", "music": "arts", "art": "arts",
+            "philosophy": "philosophy", "consciousness": "philosophy",
+            "technology": "technology", "robot": "robotics",
+            "ai": "software_development", "code": "software_development",
+            "law": "law", "economy": "economy", "climate": "environment",
+        }
+        return domain_map.get(theme.lower(), "scientific")
+
     def _select_skeleton(self, theme: str) -> dict:
-        """Choisit un squelette adapte au theme (par keywords match)."""
-        # Filtrer les squelettes dont les keywords contiennent le theme
+        """Choisit un squelette adapte au theme (dense en priorite, fallback simple)."""
+        # 1. Base dense (13K entrees)
+        dense_entry = self._select_skeleton_dense(theme)
+        if dense_entry:
+            return dense_entry
+        # 2. Fallback : squelettes simples
         matching = [s for s in self.skeletons if theme.lower() in s.get("keywords", [])]
         if matching:
             return self.rng.choice(matching)
-        # Sinon : squelette general (explain ou describe)
         general = [s for s in self.skeletons if s["intent"] in ("explain", "describe", "define")]
         return self.rng.choice(general) if general else self.rng.choice(self.skeletons)
 
     def generate_sentence(self, theme: str, language: str = "en") -> str:
         """Genere une phrase sur un theme en remplissant un squelette."""
         skeleton = self._select_skeleton(theme)
-        concepts = self._extract_concepts(theme, n=len(skeleton["slots"]) + 5)
+        concepts = self._extract_concepts(theme, n=10)
 
-        if len(concepts) < len(skeleton["slots"]):
-            # pas assez de concepts : remplir avec le theme lui-meme
-            while len(concepts) < len(skeleton["slots"]):
+        if len(concepts) < 3:
+            while len(concepts) < 3:
                 concepts.append(theme)
 
-        # Remplir les slots : concept1 = le plus fort, concept2 = le 2e, etc.
-        # Varier l'ordre pour la diversite
-        slot_order = list(range(len(skeleton["slots"])))
-        self.rng.shuffle(slot_order)
+        # Detecter le format de template (dense utilise {X}/{Y}/{Z}, simple utilise {concept1})
+        template_key = f"template_{language}" if f"template_{language}" in skeleton else language
+        if template_key not in skeleton:
+            template_key = "en" if "en" in skeleton else "template_en"
+        template = skeleton.get(template_key, skeleton.get("en", skeleton.get("template_en", "")))
 
-        template_key = f"template_{language}"
-        template = skeleton.get(template_key, skeleton["template_en"])
+        # Detecter les slots : {X}, {Y}, {Z} (dense) ou {concept1}, {concept2} (simple)
+        import re
+        slots_found = re.findall(r"\{(\w+)\}", template)
+        if not slots_found:
+            return template
 
+        # Remplir les slots avec les concepts (non stopwords, non repetes)
         filled = template
         used = set()
         concept_idx = 0
-        for slot_name in skeleton["slots"]:
-            # Prendre le concept suivant non utilise
+        for slot in slots_found:
+            # Chercher le concept suivant non utilise
             chosen = None
             for c in concepts[concept_idx:]:
-                if c not in used:
+                if c not in used and c not in STOPWORDS:
                     chosen = c
                     concept_idx = concepts.index(c) + 1
                     break
             if chosen is None:
-                # fallback : theme lui-meme
+                # fallback : theme ou concept avec stopword
+                for c in concepts[concept_idx:]:
+                    if c not in used:
+                        chosen = c
+                        concept_idx = concepts.index(c) + 1
+                        break
+            if chosen is None:
                 chosen = theme
             used.add(chosen)
-            filled = filled.replace(f"{{{slot_name}}}", chosen, 1)
+            filled = filled.replace(f"{{{slot}}}", chosen, 1)
 
         return filled
 
@@ -178,12 +251,20 @@ class SkeletonSpeaker:
         concepts = self._extract_concepts(keyword, n=8)
         skeleton = self._select_skeleton(keyword)
 
+        # Extraire l'intention (dense: selection.intention, simple: intent)
+        if "selection" in skeleton:
+            intent = skeleton["selection"].get("intention", "unknown")
+            skel_id = skeleton.get("id", "unknown")
+        else:
+            intent = skeleton.get("intent", "unknown")
+            skel_id = skeleton.get("id", "unknown")
+
         return {
             "query": query,
             "keyword": keyword,
             "concepts": concepts,
-            "skeleton_id": skeleton["id"],
-            "skeleton_intent": skeleton["intent"],
+            "skeleton_id": skel_id,
+            "skeleton_intent": intent,
             "sentence": sentence,
             "paragraph": paragraph,
         }
