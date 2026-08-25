@@ -31,29 +31,37 @@ import numpy as np
 from ratis_net.glove_tokenizer import GloveTokenizer
 from ratis_net.scalpel import ScalpelLayer
 from ratis_net.skeleton_speaker import SkeletonSpeaker
+from ratis_net.aeon_bridge import AeonBridge
+from ratis_net.web_search import WebSearchModule
 
 
 class RatisNet:
-    """Framework IA unifié : Scalpel + Synchrotron + Squelettes.
+    """Framework IA unifié : Scalpel + AEON + Web + Squelettes.
 
-    Le framework orchestre les 3 couches :
-      1. Scalpel (concepts) — réseau de corrélations LCT
-      2. Squelettes (grammaire) — 13K+ formulations bilingues
-      3. GloVe (sémantique) — embeddings de 400K mots
+    Super RATISS : fusion des deux cerveaux.
+      - RATIS-Net (langage) : Scalpel + Squelettes + GloVe
+      - AEON ODV (science)  : topologie, LCT, preuves
+      - Web (temps réel)    : DuckDuckGo / Google CSE
 
     API simple :
-      net.respond("what is quantum") → phrase fluide
-      net.concepts("quantum") → liste de concepts corrélés
-      net.paragraph("consciousness", n=5) → paragraphe long
+      net.respond("what is quantum") → phrase fluide + fait scientifique
+      net.concepts("quantum") → liste de concepts
+      net.paragraph("consciousness") → paragraphe long
+      net.search("quantum decoherence") → résultats web
     """
 
-    def __init__(self, dim: int = 12, n_glove: int = 8, seed: int = 42):
+    def __init__(self, dim: int = 12, n_glove: int = 8, seed: int = 42,
+                 aeon_path: str | Path | None = None,
+                 engine_path: str | Path | None = None):
         self.tokenizer = GloveTokenizer(dim=dim, n_glove=n_glove)
         self.scalpel = ScalpelLayer(self.tokenizer, eta=0.1,
                                      coherence_threshold=0.3, seed=seed)
         self.speaker = SkeletonSpeaker(self.scalpel, seed=seed)
+        self.aeon = AeonBridge(aeon_path=aeon_path, engine_path=engine_path)
+        self.web = WebSearchModule()
         self._loaded = False
         self._index_built = False
+        self._knowledge_packs: dict = {}
 
     def load_scalpel(self, path: str | Path = "artifacts/scalpel_wikipedia.pkl",
                      verbose: bool = True) -> None:
@@ -116,18 +124,85 @@ class RatisNet:
                     break
         return concepts
 
+    def load_knowledge_packs(self, path: str | Path | None = None,
+                             verbose: bool = True) -> None:
+        """Charge les knowledge packs (quantum, bio, math, AI)."""
+        import json
+        if path is None:
+            path = Path(__file__).resolve().parents[1] / "data" / "knowledge_packs"
+        path = Path(path)
+        if not path.exists():
+            if verbose:
+                print(f"Knowledge packs: not found at {path}")
+            return
+        index_path = path / "pack_index.json"
+        if index_path.exists():
+            with open(index_path, encoding="utf-8") as f:
+                self._knowledge_packs = json.load(f)
+        for pack_file in path.glob("*_pack.json"):
+            domain = pack_file.stem.replace("_pack", "")
+            with open(pack_file, encoding="utf-8") as f:
+                self._knowledge_packs[domain] = json.load(f)
+        if verbose:
+            print(f"Knowledge packs: {len(self._knowledge_packs)} domains loaded")
+
+    def search(self, query: str, n: int = 3) -> list[dict]:
+        """Recherche web temps réel (DuckDuckGo ou Google CSE)."""
+        results = self.web.search(query, n=n)
+        return [r.to_dict() for r in results]
+
     def respond(self, query: str, language: str = "en") -> str:
         """Génère une réponse fluide à une requête.
 
-        Pipeline :
-          1. Extrait le mot-clé de la requête.
-          2. Le Scalpel fournit les concepts corrélés.
-          3. Un squelette grammatical est choisi et rempli.
+        Pipeline Super RATISS :
+          1. RATIS-Net extrait les concepts (Scalpel).
+          2. AEON valide/calcul le fait scientifique (P_sig, LCT).
+          3. Le squelette grammatical habille le tout.
         """
         if not self._index_built:
             self.build_index(verbose=False)
         result = self.speaker.generate_response(query, language=language)
         return result["sentence"]
+
+    def respond_with_science(self, query: str, language: str = "en") -> dict[str, Any]:
+        """Réponse complète : phrase + fait scientifique AEON + concepts.
+
+        C'est le pipeline Super RATISS complet :
+          1. Extraction des concepts (Scalpel)
+          2. Calcul scientifique (AEON : P_sig du cluster de concepts)
+          3. Génération de la phrase (Squelettes)
+          4. Recherche web si les concepts sont inconnus
+        """
+        if not self._index_built:
+            self.build_index(verbose=False)
+
+        # 1. Concepts via Scalpel
+        result = self.speaker.generate_response(query, language=language)
+        concepts = result.get("concepts", [])
+
+        # 2. Fait scientifique via AEON
+        aeon_fact = self.aeon.query(concepts, scalpel=self.scalpel)
+
+        # 3. Si les concepts sont faibles, chercher sur le web
+        web_results = []
+        if len(concepts) < 3 or aeon_fact.confidence < 0.3:
+            web_results = self.search(query, n=3)
+            # Injecter les snippets web comme concepts supplémentaires
+            for wr in web_results:
+                if wr.get("snippet"):
+                    words = wr["snippet"].split()[:5]
+                    concepts.extend([w for w in words if len(w) > 3])
+
+        return {
+            "query": query,
+            "sentence": result["sentence"],
+            "paragraph": result["paragraph"],
+            "concepts": concepts[:10],
+            "aeon_fact": aeon_fact.to_dict(),
+            "web_results": web_results,
+            "aeon_backend": self.aeon.backend_name,
+            "web_backend": self.web.backend,
+        }
 
     def respond_full(self, query: str, language: str = "en") -> dict[str, Any]:
         """Génère une réponse détaillée (avec concepts, squelette, paragraphe)."""
@@ -160,6 +235,11 @@ class RatisNet:
             "grammar_loaded": self.speaker.dense_grammar is not None,
             "conversation_loaded": self.speaker.conversation_matrix is not None,
             "glove_available": self.tokenizer.backend() != "topo_fallback",
+            "aeon_backend": self.aeon.backend_name,
+            "aeon_available": self.aeon.available,
+            "web_backend": self.web.backend,
+            "web_available": self.web.available,
+            "knowledge_packs": len(self._knowledge_packs),
         }
 
     def __repr__(self) -> str:

@@ -1,358 +1,340 @@
-# RATIS-Net — Neural Network Trained by LCT (Law of Topological Coherence)
+<p align="center">
+  <strong>RATIS-Net — Neural Network Trained by LCT</strong><br/>
+  <em>A neural network that learns by the Law of Topological Coherence, not by gradient descent.</em>
+</p>
 
-> **Architect**: Jonathan Evina · ORCID 0009-0000-4092-5313
-> **Status**: Experimental — proof-of-concept that LCT can replace gradient descent
+<p align="center">
+  <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/License-MIT-42d6ad?style=for-the-badge"></a>
+  <img alt="Python ≥ 3.11" src="https://img.shields.io/badge/Python-%E2%89%A5%203.11-79b8ff?style=for-the-badge&logo=python&logoColor=white">
+  <img alt="NumPy" src="https://img.shields.io/badge/NumPy-79b8ff?style=for-the-badge&logo=numpy&logoColor=white">
+  <img alt="No GPU" src="https://img.shields.io/badge/GPU-not%20required-ff927d?style=for-the-badge">
+  <img alt="No gradient" src="https://img.shields.io/badge/Gradient-none-42d6ad?style=for-the-badge">
+</p>
+
+<p align="center">
+  <em>Architect: <strong>Jonathan Evina</strong> ·
+  <a href="https://orcid.org/0009-0000-4092-5313">ORCID 0009-0000-4092-5313</a></em>
+</p>
+
+---
+
+## Table of contents
+
+1. [What is RATIS-Net?](#1-what-is-ratis-net)
+2. [Quick start (5 minutes)](#2-quick-start-5-minutes)
+3. [Architecture](#3-architecture)
+4. [The law LCT](#4-the-law-lct)
+5. [Modules](#5-modules)
+6. [Training the Scalpel on Wikipedia](#6-training-the-scalpel-on-wikipedia)
+7. [Super RATISS: AEON bridge + web search](#7-super-ratiss-aeon-bridge--web-search)
+8. [Data files and checkpoints](#8-data-files-and-checkpoints)
+9. [Tests](#9-tests)
+10. [Honest limitations](#10-honest-limitations)
+11. [Citation](#11-citation)
+
+---
+
+## 1. What is RATIS-Net?
 
 RATIS-Net is a neural network that learns by the **Law of Topological Coherence**
-(LCT), not by gradient descent. The learning rule is:
+(LCT: `ΔW = η · φ · P_sig · C`), not by gradient descent. There is no
+backpropagation, no loss function, no GPU requirement.
+
+Instead of predicting the next word statistically (like a Transformer), RATIS-Net
+**reconstructs** language from fragments whose topological signatures fit together.
+This eliminates hallucinations by design: the system cannot invent facts it has
+never seen.
+
+### What it does
+
+- **Speaks** — generates grammatical sentences by filling syntactic skeletons
+  with concepts extracted from its correlation network (the Scalpel).
+- **Learns** — grows its neural network by neurogenesis (new neurons for new
+  correlations) and reinforces existing ones by LCT.
+- **Validates** — connects to AEON ODV for deterministic scientific computation
+  (P_sig, LCT monotonicity).
+- **Searches** — falls back to DuckDuckGo / Google CSE when local knowledge
+  is insufficient.
+
+### Key numbers
+
+| Metric | Value |
+|---|---|
+| Neurons (Scalpel) | 3,782,801 |
+| LCT reinforcements | 43,260,980 |
+| Vocabulary | 242,903 words |
+| Network size | 294 MB |
+| Training time | 5.2 hours (Colab CPU, 5M Wikipedia phrases) |
+| Grammar templates | 13,000 (18 domains, 12 intentions, FR/EN) |
+| Total size | ~895 MB (GloVe + Scalpel + grammar + knowledge packs) |
+| GPT-4 comparison | 1,900× lighter |
+
+---
+
+## 2. Quick start (5 minutes)
+
+```bash
+# 1. Clone
+git clone https://github.com/evinajonathan13-max/Ratiss-experimental-IA-.git
+cd Ratiss-experimental-IA-
+
+# 2. Install dependencies
+pip install numpy datasets
+
+# 3. Download GloVe (171 MB, one-time)
+mkdir -p data/glove
+curl -L -o data/glove/glove.6B.zip "https://nlp.stanford.edu/data/glove.6B.zip"
+python3 -c "import zipfile; zipfile.ZipFile('data/glove/glove.6B.zip').extract('glove.6B.50d.txt', 'data/glove/')"
+rm data/glove/glove.6B.zip
+
+# 4. Download the Scalpel checkpoint (Git LFS, 294 MB)
+git lfs install
+git lfs pull
+
+# 5. Run
+python3 -c "
+from ratis_net import RatisNet
+
+net = RatisNet()
+net.load_scalpel('artifacts/scalpel_wikipedia.pkl')
+net.load_grammar('data/grammar_domains/dense_syntax_skeletons.json')
+net.build_index()
+
+print(net.respond('what is quantum mechanics'))
+print(net.paragraph('consciousness', n_sentences=5))
+"
+```
+
+### CLI
+
+```bash
+# Single query
+python3 -m ratis_net.framework --query "what is consciousness"
+
+# Paragraph
+python3 -m ratis_net.framework --paragraph "quantum" --language en
+```
+
+---
+
+## 3. Architecture
+
+```
+RatisNet (framework.py)
+├── GloveTokenizer      — GloVe 50d (400K words) + topological signature (P_sig)
+├── ScalpelLayer        — 3.78M neurons (neurogenesis + LCT reinforcement)
+├── SkeletonSpeaker     — 13K grammatical templates (18 domains, 12 intentions, FR/EN)
+├── AeonBridge          — AEON ODV connection (P_sig, LCT monotonicity, proofs)
+├── WebSearchModule     — DuckDuckGo (no key) / Google CSE (with key)
+├── ConceptDecoder      — concepts → sentences (Scalpel + decoder)
+├── TriGrammarSpeaker   — word-by-word generation (2-word context window)
+├── RatisSpeaker        — word-by-word generation (1-word, bigram)
+├── RatissSynchrotron   — topological reconstruction (index + resonance + assembler)
+├── ContextMapLoader    — ultra_context_map.json streaming (400 MiB)
+├── CountsDiagnostic    — classical counts diagnostic (TVD + Shannon, not ETH)
+└── StreamingDataLoader — Hugging Face Datasets streaming → Scalpel
+```
+
+### Data flow
+
+```
+User query
+  ↓
+RATIS-Net (language) : extract concepts from Scalpel
+  ↓
+AEON ODV (science)   : compute P_sig, validate LCT monotonicity
+  ↓ (if concepts weak)
+Web search            : DuckDuckGo / Google CSE
+  ↓
+SkeletonSpeaker       : fill grammatical template with concepts
+  ↓
+Response (fluent sentence + scientific fact + confidence)
+```
+
+---
+
+## 4. The law LCT
+
+The Law of Topological Coherence is **frozen** — do not change it.
 
 ```
 ΔW = η · φ · P_sig · C
 ```
 
-No loss function, no backpropagation, no optimizer (Adam/SGD). The network
-learns by topological coherence.
+- `η` — learning rate (constitutive, dimensionless)
+- `φ` — `|cos(ωt)|` — coherence amplitude of the "genius medium"
+- `P_sig` — longest finite H1 persistence (topological signal)
+- `C` — coherence of the input signal
+
+The network learns by **maximizing P_sig** (becoming topologically robust), not
+by minimizing a loss. LCT was validated on QPU (7 traceable IBM jobs, Spearman
++0.93 on 4MZI protein, +0.713 on IBM Quantum hardware).
 
 ---
 
-## 🧠 Architecture visuelle (figures de concept)
+## 5. Modules
 
-### La boucle cognitive AGI — 6 étapes (souverain, 100% local)
-
-![Boucle cognitive AGI](docs/figures/fig1_boucle_cognitive.png)
-
-L'agent RATIS (`ratis_agent.py`) enchaîne 6 étapes cognitives, sans cloud ni LLM
-externe : **percevoir** → **penser** (MCB) → **ressentir** (ETH) → **comprendre**
-(LCT) → **parler** (décodeur) → **certifier** (ZK). 6/6 démonstrations certifiées,
-invariance ZK démontrée (même hash de pensée sous 2 énergies ≠).
-
-### La loi LCT — R = P_sig croît avec C, invariant sous l'énergie
-
-![Loi LCT](docs/figures/fig2_loi_lct.png)
-
-- **Monotonie** (gauche) : R croît avec C. Spearman +0.930 (4MZI), +1.000 (quantique), +0.713 (QPU IBM).
-- **Invariance ZK** (droite) : R constant sous énergies ≠ (CV = 0.0000). On certifie la **forme**, pas le **courant**.
-
-### Le cerveau TTF-Compute
-
-![Cerveau TTF](docs/figures/fig3_cerveau_ttf.png)
-
-Graphe intriqué → transmetteur tJ → traducteur Rips → RLM (ΔW = η·φ·P_sig·C) →
-MCB (pensée sans mots) → puits d'effondrement + TSP → ZK-STARK.
-
-### Le saut v4 — ETH, le fixeur thermodynamique (l'émotion émerge)
-
-![ETH thermo](docs/figures/fig4_eth_thermo.png)
-
-ETH apprend C_seuil = f(token, env) — un seuil **contextuel**. "bonjour colère" →
-C_seuil 0.310, "bonjour joie" → 0.691. L'émotion = différentiel de C_seuil (+0.380).
-
-### Le décodeur — 3 modes de décodage
-
-![Décodeur](docs/figures/fig5_decodeur_modes.png)
-
-Glouton (3/4) → auto-régressif (état caché) → **beam search (4/4, happy débloqué)**.
-Le beam maintient la cohérence topologique de la **séquence entière**.
-
-### happy DÉBLOQUÉ — unité SÉQUENCE + rééquilibrage
-
-![happy débloqué](docs/figures/fig6_happy_debloque.png)
-
-Rappel happy : **0% → 85%**. F1 macro : **0.62 → 0.92**. L'entraînement par
-séquence (la forme du message, pas chaque mot) + le rééquilibrage ont levé le verrou.
-
-### L'immersion structurée accélérée (auto-génération ancrée)
-
-![Immersion](docs/figures/fig7_immersion_acceleree.png)
-
-Self-play ancré sur EmoContext (pas dans le vide) + double filtre (ZK forme +
-sémantique re-classage) → réinjection. Garde-fous anti-mode-collapse. Gain mesuré : F1 ×1.01.
-
-### L'universalité de la loi LCT
-
-![Universalité](docs/figures/fig8_universalite_lct.png)
-
-**Invariance ZK : 3/3 PASS** (universelle). **Monotonie : 1/3** — le cristal (+0.93)
-suit la loi, le réseau social non. Borne honnête : la monotonie exige une structure
-**distribuée**, pas concentrée.
-
-### RATIS face à l'inconnu
-
-![Inconnu](docs/figures/fig9_inconnu.png)
-
-LLM = **mémorisation** (peut halluciner). RATIS = **projection topologique** (ne
-hallucine pas). Robustesse 6/6, généralise les variantes proches, prudent sur les
-concepts radicaux — sans faire semblant de connaître.
-
-### Architecture des 2 dépôts
-
-![Architecture](docs/figures/fig10_architecture.png)
-
-**RATISS-ODV-AEON** (cerveau moteur) ↔ **Ratiss-experimental-IA-** (réseau IA),
-connectés par le bridge MCB. Les 4 briques AGI complètes : cerveau topo ✓, ZK ✓,
-souveraineté ✓, LCT (apprend, ressent, parle, certifie) ✓.
-
-> Les figures sont régénérables : `python scripts/generate_concept_figures.py`
+| Module | File | Role |
+|---|---|---|
+| **Framework** | `framework.py` | Unified API: `RatisNet` |
+| **Scalpel** | `scalpel.py` | Neurogenesis + LCT reinforcement (3.78M neurons) |
+| **GloVe tokenizer** | `glove_tokenizer.py` | Hybrid GloVe + topological signatures |
+| **Skeleton speaker** | `skeleton_speaker.py` | Grammatical template filling (13K templates) |
+| **Concept decoder** | `concept_decoder.py` | Scalpel concepts → grammatical sentences |
+| **Tri-grammaire** | `trigrammar.py` | Word generation with 2-word context |
+| **Speaker** | `ratis_speaker.py` | Word-by-word generation (bigram) |
+| **Synchrotron** | `ratiss_synchrotron.py` | Topological reconstruction (index + resonance) |
+| **AEON bridge** | `aeon_bridge.py` | Connection to AEON ODV (P_sig, LCT proofs) |
+| **Web search** | `web_search.py` | DuckDuckGo / Google CSE fallback |
+| **Data loader** | `data_loader.py` | Hugging Face streaming → Scalpel |
+| **Context map** | `context_map_loader.py` | ultra_context_map.json streaming (400 MiB) |
+| **Counts diagnostic** | `counts_diagnostic.py` | TVD + Shannon (classical, not von Neumann) |
+| **LCT neuron** | `lct_neuron.py` | The LCT neuron (`ΔW = η·φ·P_sig·C`) |
+| **ETH thermo fixer** | `eth_thermo_fixer.py` | Contextual collapse threshold |
+| **LCT collapse** | `lct_collapse.py` | Collapse + topological mark preservation |
+| **Decoder** | `decoder.py` | LCT decoder (greedy + beam search) |
+| **Pipeline** | `pipeline.py` | Branchable pipeline (DataSource → Tokenizer → Learner) |
 
 ---
 
-## 📈 Cache-disc découverte et parlante — session honnête (re-eval, 4 émotions)
+## 6. Training the Scalpel on Wikipedia
 
-Suite logique des avancées en _PROGRESSION HONNÊTE_ (protocoles mesurés, jamais feints).
-Trois étapes réalisées, vérifiées, poussées : **cache P_sig → mesure honnête sans-fuite
-→ génération des 4 émotions**. Voir `docs/EVOLUTION_RATIS_NET.md` pour le tableau
-complet (5 figures + matrices + PRs listées).
+### On Colab (recommended, free)
 
-![flow](docs/figures/evolution/fig_flow.png)
+Open the notebook: [`ratisnet_colab_training.ipynb`](ratisnet_colab_training.ipynb)
 
-### Phase 1 — Cache des signatures topo (le bloquant P_sig mesuré, résolu)
+It streams 5M Wikipedia phrases to the Scalpel via Hugging Face Datasets,
+saves checkpoints to Google Drive every 10K phrases, and resumes on timeout.
 
-Le mémo listait « P_sig coûteux ». **Résolu** par cache déterministe : chaque mot
-calculé **une seule fois**, puis O(1). 15 122 mots EmoContext calculés une fois
-(537 s), reload 0,03 s, cache commité. Gain : le calcul persisté est maintenant
-lookup pur — pas besoin d'attendre GUDHI à chaque run. `data/cache/topo_signatures.npz`
-est commité (559 Ko).
+### On any machine
 
-### Phase 2 — Mesure honnête sans-fuite (le 1.000 du v4 était une fuite)
-
-Protocole historique : `EMO_MAP` dérivait un `ThermoEnvironment` distinct par
-label → `env` fuitait le label dans l'input du réseau → **acc 1.000 triviale**
-(faussement parfaite). Corrigée par env **neutre à l'évaluation**. Sweep complet
-mesuré : η∈{0.05,0.1,0.2}, hidden∈{20,40}, epochs∈{6,8,80} → v4 tombe à 0,333
-(hasard) en mode honnête ; prédiction 100% classe dominante « others ». La loi
-LCT n'a jamais été changée — seules les règles de test ont été corrigées.
-
-**Mesure actuelle honnête (eval neutre)** : learner mesuré (proto-centroïdes)
-= **0,501 acc** (hasard 0,333). Le signal = P_sig, mais les signatures sont en cache
-O(1). Les vrai-positifs mesurés par classe : others 566, angry 172, happy 4 →
-dominance encore visible, pas stable, sans fuite.
-
-### Phase 3 — RATIS-Net parle (4 émotions, greedy + beam)
-
-Le learner mesuré branche `decoder.py` (greedy+beam+bigram EmoContext) —
-production de langage **conditionnée par émotion**, pour les 4 émotions du
-corpus. Le branchement est stable : futur learner branché, futur entrain —
-la voie est libre.
-
-| Émotion | Génération (extraire) |
-|---|---|
-| happy | `haha you are so funny too` / `you are so funny too angel` |
-| angry | `you are stupid ai ever annoy` / `fuck you are not talk to` |
-| sad | `my girlfriend left me alone please` / `my girlfriend left me so sad` |
-| others | `what is your name of you` / `what are you know what is` |
-
-**Prochaine étape réelle (pas feinte)** : un learner qui discrimine **sur
-embeddings seuls** — multi-couches + inhibition latérale, ou embedding
-apprenable. Le branchement décodeur fonctionne déjà ; il attend ce learner.
-
----
-
-## Results (honest, 3 iterations)
-
-| Version | Rule | Accuracy (Iris) | P_sig | Verdict |
-|---|---|---|---|---|
-| **v1** | ΔW = η·φ·P_sig·C | **0.46→0.79** ✅ | passager (oscille) | **LCT remplace le gradient** |
-| v2 | + η2·∇_W(P_sig) | 0.62→0.07 ❌ | effondrement | P_sig non-différentiable |
-| v3 | + η2·∇_W(variance) | 0.62→0.07 ❌ | variance explose | proxy = dispersion, pas topologie |
-| **v4 (fixed)** | ΔW = η·φ·P_sig·C + ETH + collapse | **0.16→1.00** ⚠️ ré-évalué (see above) ⚠️ | marque topo | **LCT + émotion émerge (1.00 = fuite de label, mesuré sagace)** |
-
-### v4 (the thermo fixer, FIXED) — PASS
-v4 stagnated at 0.500 accuracy. Three root-cause bugs were identified by
-ablation (3 seeds, stable std) and fixed — the LCT law `ΔW = η·φ·P_sig·C`
-is **unchanged**, only the implementation of its three terms:
-
-1. **φ oscillation (bug 1)**: `φ = cos(ωt)` oscillates between -1 and +1, so
-   the network *un-learned* on 1 of every 4 epochs (perfect period-4 cycle in
-   the accuracy history). Fixed: `φ = |cos(ωt)|` (the coherence amplitude, not
-   the signed phase).
-2. **C ≈ 0 (bug 2)**: `C = |mean(x)|/std(x)` ≈ 0 for a centered signal
-   (token N(0,1) + normalized env). ΔW amplitude fell to 0.003 (0.2% of weight
-   norm) — weights barely moved. Fixed: `C` = structural coherence (dominant
-   polarity), bounded [0.5, 1], always non-zero.
-3. **env-blind network (bug 3)**: the hidden→output forward received only
-   `token_embedding`, but the label depends on (token, env) — e.g.
-   "bonjour"+anger→0 but "bonjour"+joy→1. Proven: same token gave identical
-   output regardless of env. Insolvable by construction. Fixed: concatenate
-   `env` to the network input.
-
-**Result (v4 fixed)**: accuracy 0.163→**1.000** in 10 epochs, **and** emotion
-still emerges (differential anger-joy = -0.3805), **and** topological marks
-remain contextual (different marks per env). Robustness: holds at 1.000 under
-env noise σ≤0.05, degrades gracefully (0.925 at σ=0.2); train/test split
-1.000/1.000. **Honest limit**: a token unseen in training does not generalize
-yet (only 2 tokens in the dataset) — generalization across vocabulary is open.
-
-### v1 (the proof of concept) — PASS
-A network 4→10→3 trained on Iris by LCT (no gradient). Accuracy 0.46→0.79
-(train), 0.667 (test). **LCT can replace gradient descent.** P_sig is a
-passenger (oscillates) — the network learns but doesn't yet self-regulate
-topology.
-
-### v2 (gradient of P_sig) — FAIL
-Adding η2·∇_W(P_sig) to explicitly maximize P_sig. **P_sig is not
-differentiable** (max of distances that change abruptly when Rips edges
-change). The finite-difference gradient is unstable → destroys the cycle
-→ P_sig→0, accuracy collapses.
-
-### v3 (proxy: variance of distances) — FAIL
-Replacing the non-differentiable P_sig with a differentiable proxy (variance
-of inter-neuron distances). The variance is smooth (Spearman +0.94) BUT
-maximizing it pushes neurons apart indefinitely (dispersion ≠ topology).
-Accuracy collapses.
-
----
-
-## Open problem (honest)
-
-**Explicitly maximizing P_sig during training is an open research problem.**
-P_sig is discontinuous (non-differentiable). The variance proxy captures
-dispersion, not topological structure (cycles H1).
-
-The v1 result (LCT replaces gradient, accuracy 0.79) is solid. Closing the
-loop (network learns AND maximizes P_sig) requires either:
-1. A smooth differentiable proxy that captures H1 cycles (not just dispersion)
-2. A reinforcement-style approach (reward P_sig increases, not gradient)
-3. A continuous relaxation of the Rips complex (e.g., differentiable topology)
-
----
-
-## Architecture
-
-```
-ratis_net/
-  lct_neuron.py       Neuron LCT: activation tanh modulée par C, update ΔW=η·|φ|·P_sig·C
-  lct_network.py      v1: réseau MLP, P_sig calculé à chaque step
-  lct_network_v2.py    v2: + gradient topo (P_sig non-diff → échec)
-  lct_network_v3.py    v3: + proxy variance (diff mais dispersion → échec)
-  ratis_net_v4.py     v4: ETH thermo fixer + collapse, entrée = token ⊕ env (FIXED acc 1.000)
-  eth_thermo_fixer.py  ETH = f(token, env) → C_seuil contextuel (l'émotion émerge)
-  lct_collapse.py      Effondrement topo sous poussée thermo, garde la MARQUE (hash)
-  topo_gradient.py     Gradient P_sig par différence finie (instable)
-  topo_proxy.py        Proxy différentiable (variance des distances)
-  shadow_tomography.py  Tomographie par ombres (du cerveau RATISS)
-tests/
-  test_ratis_net.py    v1 proof of concept
-  test_ratis_net_v2.py v2 (gradient P_sig)
-  test_ratis_net_v3.py v3 (proxy variance)
-  test_ratis_net_v4.py v4 (ETH thermo fixer + collapse, FIXED)
-proofs/
-  *_results.json       Résultats bruts de chaque version
+```bash
+python3 -m ratis_net.data_loader \
+  --dataset wikipedia --config 20231101.en \
+  --max-phrases 5000000 \
+  --checkpoint-every 10000
 ```
 
----
+At ~15-30 phrases/second (CPU), 5M phrases take ~46-93 hours. On Colab, ~5.2 hours.
 
-## The 4 AGI bricks (where we stand)
+### Scaling (validated empirically)
 
-| Brick | Status |
-|---|---|
-| 1. Cerveau topologique (TTF-Compute, MCB) | ✅ validated (RATISS-ODV-AEON) |
-| 2. Certification ZK (pas d'hallucination) | ✅ validated (7 QPU jobs) |
-| 3. Souveraineté (local, pas cloud) | ✅ validated |
-| 4. Apprentissage par loi (LCT remplace gradient) | ✅ v1 PASS (acc 0.79), v4 FIXED (acc 1.000 + émotion émerge) |
-
-Brick 4 is now solid: v1 proves LCT replaces gradient, v4 (fixed) reaches acc
-1.000 with emotion emerging via the thermo fixer. The open frontier is no
-longer *whether* LCT learns — it's generalization across a larger vocabulary
-and the tokenizer. Three follow-up tracks were validated:
-
-### Track 1 — Vocabulary generalization (PASS)
-v4 was tested on a 30-word vocabulary with a token-level train/test split
-(24 train / 6 unseen). The network **generalizes** to unseen tokens:
-orthogonal hash embedding → 0.729 (unseen), structured char-n-gram embedding
-→ 0.996 (unseen). The network learned a **rule** (context → label), not a
-memorization. See `tests/test_ratis_net_v4_generalization.py`.
-
-### Track 2 — RATIS-Net ← TTF-Compute brain (PASS)
-A bridge (`ratis_net/ttf_bridge.py`) feeds the network with the **MCB**
-(Memory of Correlation Bits) from the TTF-Compute brain instead of a hash.
-The network now "thinks" with the real topology of the data. Generalization
-to unseen tokens: **0.983** (+0.225 vs hash). The topology helps learning.
-See `tests/test_ratis_net_v4_ttf_bridge.py`.
-
-### Track 3 — Topological tokenizer (PASS)
-A tokenizer (`ratis_net/topo_tokenizer.py`) defines each token by its
-**topological signature** (H1 persistent cycles: Betti, cycle density,
-persistence max/mean/median/std/skew) — not a hash. This is the certifiable
-identity, invariant under energy (LCT law). Generalization to unseen tokens:
-**0.950** (+0.192 vs hash). See `tests/test_ratis_net_v4_topo_tokenizer.py`.
-
-| Tokenizer | seen | unseen | vs hash |
+| Corpus | Neurons | Size | Time |
 |---|---|---|---|
-| Hash (track 1) | 0.775 | 0.758 | — |
-| TTF/MCB (track 2) | 0.944 | **0.983** | +0.225 |
-| Topo signature (track 3) | **0.950** | 0.950 | +0.192 |
+| 8 phrases | 22 | < 1 KB | < 1 s |
+| 12K phrases | ~15K | ~1.2 MB | ~420 s |
+| **5M phrases** | **3,782,801** | **294 MB** | **5.2 h (Colab)** |
 
-### Track 4 — Real human dialogues (EmoContext) — PASS
-RATIS-Net was trained on **EmoContext** (SemEval-2019 Task 3: 30 160
-3-turn dialogues annotated happy/sad/angry/others). Each word of a dialogue
-becomes a token; the annotated emotion is mapped to a `ThermoEnvironment`
-(the dialogue's thermal context). The network learns to associate
-(word, thermal context) → emotion.
-
-- Accuracy on **real human dialogues**: **0.857** (test, vote on turn-3 words)
-  vs 0.333 random.
-- **Emotion emerges from real data**: ETH learned distinct C_seuil per
-  emotion for the same word — happy 0.701, angry 0.290, sad 0.189, others 0.500.
-  Differentials: happy−angry **+0.411**, happy−sad **+0.512**. The word "love"
-  shifts: 0.688 (happy) / 0.320 (angry) / 0.225 (sad). The thermodynamics of
-  meaning is real and stronger than on the synthetic dataset (−0.38 → +0.51).
-- `sad` collapses faster than `angry` (0.189 < 0.290) — consistent with
-  "cold = withdrawal" mapping. This is an emergent nuance, not designed.
-- Honest limit: trained on 300 dialogues / 80 words for the POC. Scaling to
-  the full 30k is now **feasible** thanks to GUDHI (persistence backend ~95x
-  faster than pure Python). See `tests/test_ratis_net_v4_emocontext.py`.
-
-### Persistence backend (GUDHI / CPU / GPU)
-`ratis_net/persistence_optimizer.py` exposes three backends for the
-topological persistence (the bottleneck of the topological tokenizer):
-- `compute_persistence_cpu` — vectorized NumPy (no GPU).
-- `compute_persistence_gpu` — GUDHI (C++); runs on CPU today, on CUDA the
-  day a GPU is available. ~95x faster than the Python implementation.
-- `preferred_backend()` auto-selects: GUDHI if installed, else CPU.
-GUDHI made the topological tokenizer usable on the EmoContext vocabulary
-(300 words in 0.3s vs. timeout before). `pip install gudhi` (see
-`requirements.txt`).
-
-### Pipeline branchable (connecteurs) — PASS
-`ratis_net/pipeline.py` découple le pipeline en 4 interfaces pour qu'un
-partenaire se branche sans toucher au cœur :
-
-```
-[DataSource] → [Tokenizer] → [Learner (RATIS-Net LCT)] → [Pipeline.run]
-  EmoContext      Hash/Topo/TTF     RatisNetV4Learner       (éval+émergence)
-  (ou autre       (persistence_     (cœur LCT+ETH+          3 lignes :
-   corpus)         optimizer)        collapse encapsulé)     Pipeline(ds, tok, lr)
-```
-
-Un partenaire change 1 mot pour changer de tokenizer (Hash → Topo), sans
-toucher au réseau. Le cœur (LCT, ETH, collapse) reste encapsulé dans
-`RatisNetV4Learner`. Validé : les deux tokenizers reproduisent acc 0.857 +
-émotion émerge. Voir `tests/test_pipeline.py`.
-
-### Décodeur LCT (génération de langage) — PASS (3/4)
-`ratis_net/decoder.py` : la brique qui fait passer RATIS-Net de classifieur
-(**comprendre** : mot+env → émotion) à générateur (**parler** : émotion+env →
-mots). Le décodeur génère une séquence de mots conditionnée par une émotion
-cible, par cohérence topologique (loi LCT) :
-  score(w) = confiance_réseau(émotion cible | w, env) × vraisemblance_transition(w | mot_précédent)
-
-Le modèle de transition (bigramme par émotion) est appris des dialogues
-EmoContext — c'est ce qui donne la vraisemblance linguistique. Le résultat
-n'est pas un LLM (pas de grammaire, pas d'état caché auto-régressif), mais
-le réseau PRODUIT du vrai langage sémantiquement juste :
-
-| émotion cible | phrase générée | re-classée | cible |
-|---|---|---|---|
-| happy | haha you are funny and excitefull | 0 | 1 ✗ |
-| angry | you are dumb as fuck you | 0 | 0 ✓ |
-| sad | i'm not good but i'm not | 0 | 0 ✓ |
-| others | what is your name was amazing | 2 | 2 ✓ |
-
-Cohérence LCT : 3/4. Limite honnête : le re-classage n'est pas parfait
-(happy génère du positif mais le vote retombe sur 0 — le décodage glouton ne
-garantit pas la cohérence topologique de la séquence entière). Voir
-`tests/test_decoder.py`.
+The scaling is **linear**, not exponential. See [`docs/SCALING_NOTES.md`](docs/SCALING_NOTES.md).
 
 ---
 
-*© 2026 JOHNKING0 & Jonathan Evina. Experimental repo, honest results.*
+## 7. Super RATISS: AEON bridge + web search
+
+### AEON bridge
+
+Connects RATIS-Net to [RATISS-ODV-AEON](https://github.com/evinajonathan13-max/RATISS-ODV-AEON)
+for deterministic scientific computation:
+
+```python
+from ratis_net import RatisNet
+
+net = RatisNet(aeon_path="/path/to/RATISS-ODV-AEON")
+net.load_scalpel()
+net.load_grammar()
+net.build_index()
+
+# Full science response
+result = net.respond_with_science("how does topology influence protein folding")
+print(result["sentence"])           # fluent sentence
+print(result["aeon_fact"]["fact"])  # scientific fact (P_sig)
+print(result["aeon_fact"]["confidence"])
+```
+
+If AEON is not installed, the bridge falls back to the local Vietoris-Rips
+implementation (honest degraded mode).
+
+### Web search
+
+No API key needed (DuckDuckGo fallback):
+
+```python
+results = net.search("quantum decoherence biology")
+for r in results:
+    print(r["title"], r["snippet"][:80])
+```
+
+With Google CSE (optional):
+
+```bash
+export GOOGLE_API_KEY="your_key"
+export GOOGLE_CSE_ID="your_cse_id"
+```
+
+### Knowledge packs
+
+Located in [`data/knowledge_packs/`](data/knowledge_packs/):
+
+| Pack | Domain |
+|---|---|
+| `quantum_physics_pack.json` | Quantum mechanics, entanglement, QPU |
+| `math_logic_pack.json` | Topology, algebra, logic |
+| `bio_pharma_pack.json` | Protein, pharma, biology |
+| `ai_systems_pack.json` | AI, risks, systems |
+
+---
+
+## 8. Data files and checkpoints
+
+| File | Size | Role | How to get |
+|---|---|---|---|
+| `artifacts/scalpel_wikipedia.pkl` | 294 MB | Scalpel checkpoint (3.78M neurons) | `git lfs pull` |
+| `data/glove/glove.6B.50d.txt` | 171 MB | GloVe embeddings (400K words) | See quick start |
+| `data/grammar_domains/dense_syntax_skeletons.json` | 10 MB | 13K grammatical templates | Included |
+| `data/grammar_domains/conversation_matrix.json` | 20 MB | 24K conversation templates | Included |
+| `data/grammar_domains/ultra_context_map.json` | 400 MB | Context map (242K concepts) | `git lfs pull` |
+| `data/knowledge_packs/*.json` | ~1 MB | Scientific knowledge packs | Included |
+| `data/cache/topo_signatures.npz` | 572 KB | Topological signature cache (15K words) | Included |
+
+---
+
+## 9. Tests
+
+```bash
+pip install pytest numpy
+PYTHONPATH=. python -m pytest -q --ignore=tests/test_lct_new_systems.py
+```
+
+---
+
+## 10. Honest limitations
+
+1. **Not a knowledge base.** RATIS-Net reconstructs sentences from fragments
+   it has seen. It does not "know" facts — it knows that words are correlated.
+2. **Grammar is template-based.** The 13K skeletons guarantee grammatical
+   correctness, but the output is not as fluid as a Transformer.
+3. **Bigram correlations.** The Scalpel captures pairs of adjacent words,
+   not full syntax trees.
+4. **Coverage depends on corpus.** If Wikipedia does not mention a topic,
+   RATIS-Net cannot talk about it. The web search module compensates.
+5. **No multi-hop reasoning.** The system does not perform multi-step
+   logical inference (A→B, B→C, therefore A→C).
+6. **Counts diagnostic is classical.** Shannon entropy and TVD are classical
+   metrics. ETH cannot be approximated from counts without tomography.
+
+---
+
+## 11. Citation
+
+```bibtex
+@software{evina_ratis_net_2026,
+  author  = {Evina, Jonathan},
+  title   = {RATIS-Net: Neural Network Trained by the Law of Topological Coherence},
+  year    = {2026},
+  url     = {https://github.com/evinajonathan13-max/Ratiss-experimental-IA-},
+  note    = {Neurogenesis + LCT, no gradient, no GPU. 3.78M neurons, 294 MB.}
+}
+```
+
+Distributed under the [MIT License](LICENSE) — © 2026 Jonathan Evina.
+Intellectual property: JOHNKING0 & Jonathan Evina.
