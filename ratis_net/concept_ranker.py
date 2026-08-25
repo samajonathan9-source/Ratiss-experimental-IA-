@@ -41,6 +41,12 @@ STOP = STOPWORDS_EN | STOPWORDS_FR | {
     "usually", "generally", "sometimes", "however", "although", "thus",
     "therefore", "among", "within", "without", "along", "across", "towards",
     "upon", "per", "via", "etc", "also", "may", "many", "much", "one", "two",
+    # adjectifs génériques de taille/degré : jamais des concepts
+    "small", "large", "big", "little", "long", "short", "high", "low",
+    "wide", "narrow", "deep", "full", "empty", "early", "late",
+    # nombres : jamais des concepts
+    "three", "four", "five", "six", "seven", "eight", "nine", "ten",
+    "hundred", "thousand", "million", "billion",
 }
 
 

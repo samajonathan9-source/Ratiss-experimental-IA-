@@ -277,11 +277,34 @@ class RatisNet:
                     concepts.extend([w for w in words if len(w) > 3])
 
         # 4. Construire la réponse enrichie
-        # Si on a des knowledge facts, les injecter dans la phrase
+        # Faits vérifiés → réponse propre : faits d'abord, puis les concepts
+        # du corpus en complément (pas de gabarit à slots accolé au fait).
         enriched_sentence = result["sentence"]
         if knowledge_facts:
-            first_fact = knowledge_facts[0]
-            enriched_sentence = first_fact["text"] + " " + result["sentence"]
+            facts_text = " ".join(f["text"].strip() for f in knowledge_facts[:2])
+            if facts_text and facts_text[-1] not in ".!?":
+                facts_text += "."
+            related = [c for c in concepts[:5]
+                       if c.lower() not in facts_text.lower()]
+            # Requête multi-mots : un concept « associé » doit être relié à
+            # au moins 2 mots-clés dans le graphe — sinon le biais de corpus
+            # passerait à côté du fait (« black hole » → metal, comedy).
+            kws = [k for k in (result.get("keywords") or []) if len(k) > 2]
+            if len(kws) >= 2 and self.speaker._ranker is not None:
+                neigh = self.speaker._ranker._neighbors
+                related = [c for c in related
+                           if sum(1 for k in kws
+                                  if c in neigh.get(k, ())) >= 2]
+            related = related[:3]
+            # Une association isolée est du bruit ; un cluster (≥2) est un
+            # signal. Sans cluster, pas de complément — le fait reste seul.
+            if len(related) < 2:
+                related = []
+            if related:
+                tail = ("Associated in the learned corpus: "
+                        if lang == "en" else "Associés dans le corpus appris : ")
+                facts_text += " " + tail + ", ".join(related) + "."
+            enriched_sentence = facts_text
 
         return {
             "query": query,

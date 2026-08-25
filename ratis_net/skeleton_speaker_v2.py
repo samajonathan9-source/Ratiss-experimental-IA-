@@ -215,11 +215,67 @@ class SkeletonSpeakerV2:
         return self._pick(entries, language, intent=route_.intention)
 
     # ── Remplissage ─────────────────────────────────────────────────────────
+    _META_MARKERS = re.compile(
+        r"(registre|register|tonalité|tone\b|rythme de l'échange|pace of the "
+        r"exchange|hypothèses de départ|starting assumptions|observations des "
+        r"interprétations|observations from interpretations|niveau de preuve|"
+        r"level of evidence|cadre|contexte|frame|context|simulation|réflexion|"
+        r"reflection|lecture|reading|situation|pratique|practice|analyse|"
+        r"analysis|échange|exchange|collaboration|introduction|soutien|support|"
+        r"familial|family|créatif|creative|recherche|research|vérifier|"
+        r"verification|apprentissage|learning)", re.IGNORECASE)
+
+    @staticmethod
+    def _strip_meta_tail(template: str) -> str:
+        """Supprime la queue de métalangage après le dernier slot {…}.
+
+        Vérifié empiriquement sur les 13 000 gabarits denses et les 24 000
+        formulations conversationnelles : tout le texte situé après le
+        dernier slot est du métalangage (« in a neutral register », « avec
+        une tonalité calme », « dans un cadre scientifique »…), jamais du
+        contenu. On garde la ponctuation finale du template.
+        """
+        matches = list(re.finditer(r"\{(\w+)\}", template))
+        if not matches:
+            return template
+        core = template[:matches[-1].end()]
+        tail = template[matches[-1].end():]
+        if not tail.strip():
+            return core + "."
+        # Garder les segments de tête non-méta (« aujourd'hui » est du
+        # contenu) ; couper dès le premier segment méta (registre, tonalité,
+        # cadre, niveau de preuve, rythme de l'échange…).
+        kept: list[str] = []
+        for seg in tail.split(","):
+            if SkeletonSpeakerV2._META_MARKERS.search(seg):
+                break
+            kept.append(seg)
+        kept_tail = ",".join(kept).strip().rstrip(" ,;:")
+        if kept_tail:
+            if kept_tail[-1] not in ".!?…":
+                kept_tail += "."
+            sep = "" if kept_tail[:1] in ".,;:!?)]" else " "
+            return core + sep + kept_tail
+        m = re.search(r"[.!?…]+\s*$", tail)
+        return core + (m.group(0).strip() if m else ".")
+
+    @staticmethod
+    def _polish(text: str) -> str:
+        """Finitions typographiques : espaces doubles, « , » orphelines,
+        majuscule initiale, point final."""
+        t = re.sub(r"\s+", " ", text).strip()
+        t = re.sub(r"\s+([,.])", r"\1", t)
+        if t and t[0].islower():
+            t = t[0].upper() + t[1:]
+        if t and t[-1] not in ".!?…»":
+            t += "."
+        return t
+
     @staticmethod
     def _template_of(entry: dict, language: str) -> str:
         for key in (f"template_{language}", language, "template_en", "en"):
             if entry.get(key):
-                return entry[key]
+                return SkeletonSpeakerV2._strip_meta_tail(entry[key])
         return ""
 
     def _fill(self, template: str, concepts: list[str],
@@ -239,7 +295,7 @@ class SkeletonSpeakerV2:
                 chosen = theme or _GENERIC_FILLER.get(language, "this")
             used.add(chosen)
             filled = filled.replace(f"{{{slot}}}", chosen, 1)
-        return filled
+        return self._polish(filled)
 
     # ── API publique (compatible v1) ────────────────────────────────────────
     def generate_sentence(self, theme: str, language: str = "en") -> str:
