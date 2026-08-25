@@ -37,7 +37,18 @@ _AEON = _ROOT.parent / "RATISS-ODV-AEON"
 if _AEON.is_dir():
     sys.path.append(str(_AEON))
 
-from kernel.ttf.lct_law import scan_monotonicity, test_invariance, evaluate_monotonicity
+# kernel/ttf/lct_law.py a été fusionné dans ratis_net.science_core (zéro
+# dépendance externe). La loi reste figée ; seul le chemin d'import change.
+from ratis_net.science_core import (evaluate_monotonicity, scan_monotonicity,
+                                    validate_invariance)
+
+
+def check_invariance(coords: np.ndarray) -> dict:
+    """Adaptateur vers science_core.validate_invariance (API historique)."""
+    out = validate_invariance(coords)
+    return {"invariant": out["invariant"], "R_cv": out["cv_pct"] / 100.0,
+            "energies": out["energies"], "R_values": out["R_values"],
+            "R_mean": out["R_mean"]}
 
 
 # ── Système 1 : réseau social (communauté + bruit) ─────────────────────────
@@ -88,24 +99,57 @@ def crystal_lattice_coords(nx: int = 5, ny: int = 5, n_vacancies: int = 10,
     return atoms
 
 
-def test_system(name: str, coords: np.ndarray):
+def run_system(name: str, coords: np.ndarray):
     """Teste la loi LCT sur un système : monotonie R(C) + invariance ZK."""
     print(f"\n  [{name}] {len(coords)} points")
     # monotonie : R croît avec C
-    meas = scan_monotonicity(coords, n_points=12, label=name)
+    meas = scan_monotonicity(coords, n_steps=12)
     mono = evaluate_monotonicity(meas)
     # invariance : R constant sous énergies ≠
-    inv = test_invariance(coords)
+    inv = check_invariance(coords)
     verdict_mono = "PASS" if mono["monotone"] else "FAIL"
     verdict_inv = "PASS" if inv["invariant"] else "FAIL"
-    print(f"    monotonie  : Spearman {mono['corr_spearman']:+.3f} "
-          f"(R {mono['R_range'][0]:.2f}→{mono['R_range'][1]:.2f}) {verdict_mono}")
+    r_vals = mono.get("R_values", [0.0, 0.0])
+    print(f"    monotonie  : Spearman {mono['spearman']:+.3f} "
+          f"(R {min(r_vals):.2f}→{max(r_vals):.2f}) {verdict_mono}")
     print(f"    invariance : CV={inv['R_cv']:.4f} "
           f"(énergies {[round(e,2) for e in inv['energies']]}) {verdict_inv}")
     return {"system": name, "n_points": len(coords),
             "monotonicity": mono, "invariance": inv,
             "verdict_monotonicity": verdict_mono,
             "verdict_invariance": verdict_inv}
+
+
+# ── Tests pytest (API science_core intégrée) ────────────────────────────────
+
+def test_social_network_coords_deterministic():
+    a = social_network_coords(n_members=15, n_spam=10, seed=3)
+    b = social_network_coords(n_members=15, n_spam=10, seed=3)
+    assert a.shape == (25, 3)
+    assert np.allclose(a, b)
+
+
+def test_crystal_lattice_coords_deterministic():
+    a = crystal_lattice_coords(nx=4, ny=4, n_vacancies=3, seed=5)
+    b = crystal_lattice_coords(nx=4, ny=4, n_vacancies=3, seed=5)
+    assert np.allclose(a, b)
+
+
+def test_lct_invariance_on_crystal():
+    """L'invariance (partie purement topologique de la loi) tient sur le
+    cristal : R = P_sig constant sous changement d'énergie."""
+    coords = crystal_lattice_coords(nx=5, ny=5, n_vacancies=4, seed=42)
+    inv = validate_invariance(coords)
+    assert inv["invariant"], f"CV={inv['cv_pct']:.2f}% (seuil 5%)"
+
+
+def test_spearman_evaluation_api():
+    """evaluate_monotonicity expose le Spearman signé sur les mesures LCT."""
+    coords = crystal_lattice_coords(nx=4, ny=4, n_vacancies=2, seed=42)
+    meas = scan_monotonicity(coords, n_steps=6)
+    mono = evaluate_monotonicity(meas)
+    assert "spearman" in mono and "monotone" in mono
+    assert -1.0 <= mono["spearman"] <= 1.0
 
 
 def main():
@@ -119,15 +163,15 @@ def main():
 
     # Système 1 : réseau social
     coords_social = social_network_coords(n_members=30, n_spam=30)
-    results["reseau_social"] = test_system("réseau social", coords_social)
+    results["reseau_social"] = run_system("réseau social", coords_social)
 
     # Système 2 : matériau cristallin
     coords_crystal = crystal_lattice_coords(nx=6, ny=6, n_vacancies=12)
-    results["materiau_cristallin"] = test_system("matériau cristallin", coords_crystal)
+    results["materiau_cristallin"] = run_system("matériau cristallin", coords_crystal)
 
     # Système bonus : réseau social plus dense (communauté plus forte)
     coords_social2 = social_network_coords(n_members=40, n_spam=15, seed=7)
-    results["reseau_social_dense"] = test_system("réseau social dense", coords_social2)
+    results["reseau_social_dense"] = run_system("réseau social dense", coords_social2)
 
     n_pass_mono = sum(1 for r in results.values()
                       if r["verdict_monotonicity"] == "PASS")
@@ -142,7 +186,7 @@ def main():
     for k, r in results.items():
         print(f"  {k:24s} {r['verdict_monotonicity']:>10s} "
               f"{r['verdict_invariance']:>11s}  "
-              f"(ρ={r['monotonicity']['corr_spearman']:+.3f})")
+              f"(ρ={r['monotonicity']['spearman']:+.3f})")
     print(f"\n  Monotonie : {n_pass_mono}/{n} PASS | Invariance : {n_pass_inv}/{n} PASS")
     if n_pass_mono == n and n_pass_inv == n:
         print(f"  → UNIVERSALITÉ : la loi LCT tient sur {n} nouveaux systèmes")

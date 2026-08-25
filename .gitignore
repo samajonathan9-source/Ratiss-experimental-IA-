@@ -8,3 +8,4 @@ data/glove/*.txt
 data/glove/*.zip
 data/scalpel_network.pkl
 trained/
+*.egg-info/

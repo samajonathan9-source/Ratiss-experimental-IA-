@@ -30,9 +30,12 @@ import numpy as np
 
 from ratis_net.glove_tokenizer import GloveTokenizer
 from ratis_net.scalpel import ScalpelLayer
-from ratis_net.skeleton_speaker import SkeletonSpeaker
+from ratis_net.skeleton_speaker_v2 import SkeletonSpeakerV2
 from ratis_net.aeon_bridge import AeonBridge
 from ratis_net.web_search import WebSearchModule
+from ratis_net.chain_reasoning import find_chains
+from ratis_net.integrity_proof import prove as _prove_subgraph
+from ratis_net.integrity_proof import verify as _verify_subgraph
 
 
 class RatisNet:
@@ -57,7 +60,7 @@ class RatisNet:
         self.tokenizer = GloveTokenizer(dim=dim, n_glove=n_glove)
         self.scalpel = ScalpelLayer(self.tokenizer, eta=0.1,
                                      coherence_threshold=0.3, seed=seed)
-        self.speaker = SkeletonSpeaker(self.scalpel, seed=seed)
+        self.speaker = SkeletonSpeakerV2(self.scalpel, seed=seed)
         self.aeon = AeonBridge()  # toujours disponible (intégré)
         self.web = WebSearchModule()
         self._loaded = False
@@ -99,9 +102,9 @@ class RatisNet:
                               for entries in d.values())
             n_conv = 0
             if self.speaker.conversation_matrix:
-                contexts = self.speaker.conversation_matrix.get("contexts", {})
+                contexts = self.speaker.conversation_matrix.get("social_contexts", {})
                 n_conv = sum(len(entries)
-                             for c in contexts.values()
+                             for c in contexts.values() if isinstance(c, dict)
                              for entries in c.values() if isinstance(entries, list))
             print(f"Grammar: {n_dense:,} dense + {n_conv:,} conversation templates")
 
@@ -113,17 +116,11 @@ class RatisNet:
         self._index_built = True
 
     def concepts(self, word: str, n: int = 10) -> list[str]:
-        """Extrait les n concepts les plus corrélés à un mot."""
+        """Extrait les n concepts les plus pertinents autour d'un mot
+        (classement IDF + voisinage partagé + complément GloVe)."""
         if not self._index_built:
             self.build_index(verbose=False)
-        corrs = self.speaker._corrs(word)
-        concepts = []
-        for term, weight, _ in corrs:
-            if term not in self.speaker.STOPWORDS and term != word and len(term) > 1:
-                concepts.append(term)
-                if len(concepts) >= n:
-                    break
-        return concepts
+        return self.speaker._extract_concepts(word.lower(), n=n)
 
     def load_knowledge_packs(self, path: str | Path | None = None,
                              verbose: bool = True) -> None:
@@ -163,26 +160,42 @@ class RatisNet:
 
         Retourne les relations trouvées : [{term, relation, context, text}, ...]
         """
+        import unicodedata
+
+        def _norm(s: str) -> str:
+            return "".join(c for c in unicodedata.normalize("NFKD", s.lower().strip())
+                           if not unicodedata.combining(c))
+
         results = []
-        concept_lower = concept.lower()
+        concept_lower = concept.lower().strip()
+        concept_norm = _norm(concept)
+        if len(concept_lower) < 3:
+            return results
         for domain, pack in self._knowledge_packs.items():
             if domain == "_index" or not isinstance(pack, dict):
                 continue
             for entry in pack.get("entries", []):
                 root = entry.get("r", "").lower()
-                if concept_lower in root or root in concept_lower:
-                    for rel in entry.get("rel", []):
-                        lang_key = language if language in rel else "en"
-                        results.append({
-                            "domain": domain,
-                            "root": entry.get("r", ""),
-                            "term": rel.get("t", ""),
-                            "relation": rel.get("k", ""),
-                            "context": rel.get("c", ""),
-                            "text": rel.get(lang_key, rel.get("en", "")),
-                            "source": pack.get("sources", ["unknown"]),
-                            "aeon_proof_status": "not_generated",
-                        })
+                aliases = [_norm(a) for a in entry.get("aliases", [])]
+                # exact, alias FR, ou inclusion de mot complet (évite "va" → "vaccine")
+                matched = (concept_lower == root or
+                           concept_norm in aliases or
+                           (len(concept_lower) >= 4 and concept_lower in root) or
+                           (len(root) >= 4 and root in concept_lower))
+                if not matched:
+                    continue
+                for rel in entry.get("rel", []):
+                    lang_key = language if language in rel else "en"
+                    results.append({
+                        "domain": domain,
+                        "root": entry.get("r", ""),
+                        "term": rel.get("t", ""),
+                        "relation": rel.get("k", ""),
+                        "context": rel.get("c", ""),
+                        "text": rel.get(lang_key, rel.get("en", "")),
+                        "source": pack.get("sources", ["unknown"]),
+                        "aeon_proof_status": "not_generated",
+                    })
         return results
 
     def search(self, query: str, n: int = 3) -> list[dict]:
@@ -190,7 +203,7 @@ class RatisNet:
         results = self.web.search(query, n=n)
         return [r.to_dict() for r in results]
 
-    def respond(self, query: str, language: str = "en") -> str:
+    def respond(self, query: str, language: str | None = None) -> str:
         """Génère une réponse fluide à une requête.
 
         Pipeline Super RATISS :
@@ -203,7 +216,7 @@ class RatisNet:
         result = self.speaker.generate_response(query, language=language)
         return result["sentence"]
 
-    def respond_with_science(self, query: str, language: str = "en") -> dict[str, Any]:
+    def respond_with_science(self, query: str, language: str | None = None) -> dict[str, Any]:
         """Réponse complète : phrase + fait scientifique AEON + concepts.
 
         C'est le pipeline Super RATISS complet :
@@ -218,15 +231,41 @@ class RatisNet:
         # 1. Concepts via Scalpel
         result = self.speaker.generate_response(query, language=language)
         concepts = result.get("concepts", [])
+        lang = result.get("language", language or "en")
+
+        # Les actes sociaux (salutation, gratitude...) ne déclenchent ni
+        # faits scientifiques ni recherche web : la réponse est le social.
+        social_qtypes = {"greeting", "farewell", "gratitude", "identity"}
+        if result.get("qtype") in social_qtypes:
+            return {
+                "query": query,
+                "sentence": result["sentence"],
+                "paragraph": result["paragraph"],
+                "concepts": concepts[:10],
+                "aeon_fact": None,
+                "knowledge_facts": [],
+                "web_results": [],
+                "aeon_backend": self.aeon.backend_name,
+                "web_backend": self.web.backend,
+            }
 
         # 2. Fait scientifique via AEON (science_core intégré)
         aeon_fact = self.aeon.query(concepts, scalpel=self.scalpel)
 
-        # 2b. Knowledge packs : chercher des faits validés dans les packs
+        # 2b. Knowledge packs : faits validés, composés de la requête d'abord
+        # ("black hole" est une racine de pack ; "black" seul ne l'est pas)
         knowledge_facts = []
-        for concept in concepts[:5]:
-            facts = self.lookup_knowledge(concept, language=language)
-            knowledge_facts.extend(facts[:3])  # max 3 par concept
+        seen_facts: set[str] = set()
+        lookup_terms = (result.get("compounds", []) +
+                        result.get("keywords", []) + concepts[:3])
+        for term in lookup_terms:
+            for fact in self.lookup_knowledge(term, language=lang):
+                key = fact["text"][:80]
+                if key not in seen_facts:
+                    seen_facts.add(key)
+                    knowledge_facts.append(fact)
+            if len(knowledge_facts) >= 5:
+                break
 
         # 3. Si les concepts sont faibles ET pas de knowledge pack, chercher web
         web_results = []
@@ -256,11 +295,35 @@ class RatisNet:
             "web_backend": self.web.backend,
         }
 
-    def respond_full(self, query: str, language: str = "en") -> dict[str, Any]:
+    def respond_full(self, query: str, language: str | None = None) -> dict[str, Any]:
         """Génère une réponse détaillée (avec concepts, squelette, paragraphe)."""
         if not self._index_built:
             self.build_index(verbose=False)
         return self.speaker.generate_response(query, language=language)
+
+    def chain(self, source: str, target: str, max_hops: int = 3,
+              max_chains: int = 3) -> list[dict[str, Any]]:
+        """Chaînes d'association entre deux concepts (corrélation, pas causalité)."""
+        if not self._index_built:
+            self.build_index(verbose=False)
+        chains = find_chains(source, target, self.speaker._index,
+                             max_hops=max_hops, max_chains=max_chains)
+        return [c.to_dict() for c in chains]
+
+    def prove(self, concepts: list[str]) -> dict[str, Any]:
+        """Empreinte SHA-256 du sous-graphe de concepts (intégrité, pas ZK)."""
+        proof = _prove_subgraph(concepts, self.scalpel)
+        return proof.to_dict()
+
+    def verify_proof(self, proof: dict[str, Any]) -> bool:
+        """Vérifie qu'une empreinte se reproduit depuis le checkpoint chargé."""
+        from ratis_net.integrity_proof import IntegrityProof
+        p = IntegrityProof(concepts=proof["concepts"],
+                           n_edges=proof["n_edges"],
+                           total_weight=proof["total_weight"],
+                           p_sig_max=proof["p_sig_max"],
+                           digest=proof["digest"])
+        return _verify_subgraph(p, self.scalpel)
 
     def paragraph(self, theme: str, n_sentences: int = 5,
                   language: str = "en") -> str:
@@ -270,7 +333,7 @@ class RatisNet:
         return self.speaker.generate_paragraph(theme, n_sentences=n_sentences,
                                                 language=language)
 
-    def converse(self, query: str, language: str = "en") -> str:
+    def converse(self, query: str, language: str | None = None) -> str:
         """Mode conversation : réponse + paragraphe court (3 phrases)."""
         if not self._index_built:
             self.build_index(verbose=False)

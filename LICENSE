@@ -1,0 +1,61 @@
+RATIS PROPRIETARY LICENSE — Version 1.0
+
+Copyright (c) 2025-2026 Jonathan Evina & JOHNKING0
+ORCID : 0009-0000-4092-5313 · DOI : 10.17605/OSF.IO/6JZMB
+
+TOUS DROITS RÉSERVÉS — ALL RIGHTS RESERVED
+
+═══════════════════════════════════════════════════════════════════════
+
+1. DÉFINITIONS
+
+« Logiciel » désigne l'ensemble du contenu de ce dépôt : code source,
+algorithmes, architecture, checkpoints de réseau (Scalpel), grammaires,
+cartes de contexte, knowledge packs, documentation, tests et la loi LCT
+(R = P_sig ; ΔW = η·φ·P_sig·C) dans son implémentation.
+
+« Titulaires » désigne Jonathan Evina et JOHNKING0, co-détenteurs de
+l'intégralité des droits de propriété intellectuelle.
+
+2. RESTRICTIONS
+
+Sauf autorisation écrite préalable des Titulaires, il est interdit de :
+
+  a) copier, reproduire ou redistribuer le Logiciel, en tout ou partie ;
+  b) modifier, adapter, traduire ou créer des œuvres dérivées du Logiciel ;
+  c) utiliser le Logiciel à des fins commerciales, directes ou indirectes ;
+  d) utiliser le Logiciel pour entraîner, fine-tuner ou distiller tout
+     modèle d'intelligence artificielle tiers ;
+  e) publier des benchmarks ou comparaisons publiques du Logiciel ;
+  f) contourner ou retirer les preuves d'intégrité (empreintes SHA-256)
+     associées au Logiciel ;
+  g) présenter le Logiciel ou ses résultats comme l'œuvre d'un tiers.
+
+3. USAGE AUTORISÉ
+
+La lecture du code à des fins d'évaluation scientifique est autorisée
+dans le cadre d'une demande expresse adressée aux Titulaires. Toute
+utilisation au-delà de la lecture exige une licence écrite séparée.
+
+4. PROPRIÉTÉ INTELLECTUELLE
+
+La loi de Cohérence Topologique (LCT), l'architecture Scalpel
+(neurogenesis par corrélations), le Synchrotron et l'ensemble des
+concepts « RATISS » sont la propriété intellectuelle des Titulaires.
+Aucune disposition de cette licence ne cède de droit de propriété.
+
+5. ABSENCE DE GARANTIE
+
+LE LOGICIEL EST FOURNI « TEL QUEL », SANS AUCUNE GARANTIE, EXPRESSE OU
+IMPLICITE, Y COMPRIS SANS LIMITATION LES GARANTIES DE QUALITÉ MARCHANDE
+OU D'ADÉQUATION À UN USAGE PARTICULIER. LES TITULAIRES NE SAURAIENT ÊTRE
+TENUS RESPONSABLES DE TOUT DOMMAGE RÉSULTANT DE L'UTILISATION DU LOGICIEL.
+
+6. CONTACT LICENCE
+
+Jonathan Evina — Yaoundé, Cameroun
+Dépôt : https://github.com/evinajonathan13-max/Ratiss-experimental-IA-
+
+═══════════════════════════════════════════════════════════════════════
+Ce fichier remplace toute licence antérieure. Aucune licence MIT, Apache
+ou autre licence ouverte ne s'applique à ce dépôt.

@@ -132,8 +132,65 @@
 - **URL** : https://github.com/evinajonathan13-max/Ratiss-experimental-IA- (privé)
 - **Langage** : Python
 - **Rôle** : RATIS-Net — réseau neuronal entraîné par LCT, pas par gradient.
-- **Dernier commit** : `0a9cb87` — AGENTS.md avec tests + ZK-STARK.
-- **Ce qui a été fait (cette session)** :
+- **Dernier commit** : reconstruction v2 (ce commit) — framework pip-installable.
+- **Reconstruction full-stack (session du 25/08/2026, après-midi)** :
+
+  #### Diagnostic initial (ce qui était cassé)
+  - 24 000 gabarits conversationnels présents mais **0 chargés** (le code
+    lisait la clé `contexts` ; la vraie clé est `social_contexts`).
+  - Sélection de squelette sans tenir compte du type de question
+    (intention tirée au hasard, domaine "scientific" par défaut).
+  - Extraction du mot-clé = mot le plus long → "black hole" devenait "black"
+    → concepts "metal, american, comedy" (biais Wikipedia).
+  - Pas de ranking IDF : les co-occurrences ubiquitaires ("to", degré 14 814)
+    dominaient les concepts spécifiques.
+  - Bug d'indentation dans `lookup_knowledge` : la boucle d'ajout des faits
+    était sous `if not matched: continue` → **toujours 0 fait retourné**.
+  - `test_lct_new_systems.py` importait `kernel.ttf.lct_law` (dépendance AEON
+    externe) → collection pytest cassée.
+  - 18 fichiers de tests sur 22 n'avaient **aucune fonction test_** (coquilles).
+
+  #### Nouveau pipeline de langage (v2)
+  - `query_analyzer.py` : langue FR/EN, type de question (salutation,
+    définition, identité, capacité…), mots-clés + composés, élision FR.
+  - `intent_router.py` : social → conversation_matrix ; factuel → grammaire
+    dense (domaine déduit du gazetteer, intention du type de question).
+  - `concept_ranker.py` : IDF de degré + bonus voisinage partagé + complément
+    GloVe kNN (matrice 400K normalisée, chargée paresseusement).
+  - `skeleton_speaker_v2.py` : remplissage avec tonalité préférée par
+    intention, identité/capacités figées et honnêtes, fallback FR déclaratif.
+  - `chain_reasoning.py` : chaînes d'association BFS (corrélation, pas
+    causalité — étiqueté honnêtement), stopwords exclus des maillons.
+  - `integrity_proof.py` : empreinte SHA-256 déterministe du sous-graphe de
+    concepts (intégrité vérifiable — PAS un ZK-STARK, documenté).
+
+  #### Packaging et API
+  - `pyproject.toml` : `pip install .` → commandes `ratisnet` et
+    `ratisnet-serve`.
+  - `cli.py` : ask / converse / concepts / chain / prove / paragraph / stats.
+  - `server.py` : HTTP stdlib, endpoints /respond /science /concepts /chain
+    /prove /health. Testé en local (200 OK).
+
+  #### Knowledge packs étendus (4 → 7 domaines, 15 → 45 entrées)
+  - Nouveaux : `astronomy` (trou noir, supernova, galaxie, gravité…),
+    `chemistry` (atome, molécule, catalyseur…), `medicine` (virus, vaccin,
+    neurone, ADN…). Bio enrichi : protein, cell, enzyme, photosynthesis.
+  - Alias FR par racine ("trou noir" → black hole, "photosynthèse" → …) avec
+    normalisation d'accents dans le lookup.
+
+  #### Nettoyage
+  - 22 modules v1–v4 et 18 coquilles de tests déplacés dans `archive/`
+    (rien supprimé ; `archive/README.md` explique chaque fichier).
+  - Mémos de session obsolètes → `archive/session_memos/`.
+  - `LICENSE` propriétaire JOHNKING0 & Jonathan Evina (remplace toute
+    licence ouverte ; la repo privée reste privée).
+  - README refait avec 3 images SVG (architecture, boucle LCT, avant/après).
+
+  #### Tests : 21 → 57, tous verts
+  - Nouveaux : test_language_pipeline (19), test_language_quality (13),
+    test_lct_new_systems réparé (4).
+
+- **Ce qui a été fait (session précédente)** :
 
   #### Diagnostic et fix
   - topo_tokenizer produisait des signatures quasi constantes (std < 0.02) → plafonnement à 0.501.
@@ -207,28 +264,34 @@
 
 ```
 ratis_net/
-├── framework.py          # API unifiée : from ratis_net import RatisNet
-├── __init__.py           # expose RatisNet
-├── science_core.py       # AEON ODV FUSIONNÉ (P_sig, LCT, Vietoris-Rips)
-├── aeon_bridge.py        # Bridge → utilise science_core (PAS de sys.path externe)
-├── scalpel.py            # Neurogenesis + LCT (3.78M neurones)
-├── glove_tokenizer.py    # GloVe 400K + topo (P_sig)
-├── skeleton_speaker.py   # 13K squelettes grammaticaux FR/EN
-├── concept_decoder.py    # Concepts → phrases
-├── trigrammar.py         # Génération mot par mot (fenêtre 2)
-├── ratis_speaker.py      # Génération mot par mot (bigramme)
-├── ratiss_synchrotron.py # Reconstruction topologique
-├── context_map_loader.py # ultra_context_map.json streaming (400 MiB)
-├── web_search.py         # DuckDuckGo / Google CSE
-├── data_loader.py        # Streaming Hugging Face → Scalpel
-├── lct_neuron.py         # Neurone LCT (ΔW = η·φ·P_sig·C)
-├── decoder.py            # Décodeur LCT (greedy + beam)
-├── pipeline.py           # Pipeline branchable
-├── eth_thermo_fixer.py   # ETH = f(token, env)
-├── lct_collapse.py       # Collapse + marque topo
-├── topo_tokenizer.py     # Tokenizer topo (lent, remplacé par glove_tokenizer)
-├── topo_cache.py         # Cache topo (15K mots, O(1))
-└── ... (autres modules historiques v1-v4)
+├── framework.py           # API unifiée : from ratis_net import RatisNet
+├── __init__.py            # expose RatisNet
+├── cli.py                 # ratisnet ask|converse|concepts|chain|prove|stats
+├── server.py              # HTTP stdlib : /respond /science /concepts /chain /prove
+├── query_analyzer.py      # langue, type de question, mots-clés, composés
+├── intent_router.py       # social (24K) vs factuel (13K denses), domaine
+├── concept_ranker.py      # IDF de degré + voisinage partagé + GloVe kNN
+├── skeleton_speaker_v2.py # speaker routé (remplace skeleton_speaker v1)
+├── chain_reasoning.py     # chaînes d'association BFS (corrélation honnête)
+├── integrity_proof.py     # empreinte SHA-256 du sous-graphe (pas ZK-STARK)
+├── science_core.py        # AEON ODV FUSIONNÉ (P_sig, LCT, Vietoris-Rips)
+├── aeon_bridge.py         # Bridge → utilise science_core (PAS de sys.path externe)
+├── scalpel.py             # Neurogenesis + LCT (3.78M neurones)
+├── glove_tokenizer.py     # GloVe 400K + topo (P_sig)
+├── ratiss_synchrotron.py  # Reconstruction topologique
+├── context_map_loader.py  # ultra_context_map.json streaming (400 MiB)
+├── web_search.py          # DuckDuckGo / Google CSE
+├── data_loader.py         # Streaming Hugging Face → Scalpel
+├── lct_neuron.py          # Neurone LCT (ΔW = η·φ·P_sig·C)
+├── emocontext_loader.py   # Émotions (test vivant test_lct_modules)
+├── eth_thermo_fixer.py    # ETH = f(token, env) (dép. emocontext_loader)
+├── persistence_optimizer.py # Backend GUDHI (dép. topo_tokenizer)
+├── topo_tokenizer.py      # Tokenizer topo (composante LCT du tokenizer hybride)
+├── topo_cache.py          # Cache topo (15K mots, O(1))
+└── lct_modules/           # GravitationalTopoMeasure, TopologicalQubit, LCTTransformer
+
+archive/legacy_v1/         # 22 modules v1-v4 + 18 coquilles de tests (rien supprimé)
+archive/session_memos/     # anciens fichiers de relais (remplacés par ce mémo)
 ```
 
 ### API
@@ -236,20 +299,27 @@ ratis_net/
 ```python
 from ratis_net import RatisNet
 
-net = RatisNet()  # aeon_path ignoré, tout est intégré
+net = RatisNet()  # tout est intégré
 net.load_scalpel("artifacts/scalpel_wikipedia.pkl")
-net.load_grammar("data/grammar_domains/dense_syntax_skeletons.json")
-net.load_knowledge_packs("data/knowledge_packs")
-net.build_index()  # ~8s pour 242K mots
+net.load_grammar()          # dense + conversation (chargées automatiquement)
+net.load_knowledge_packs()  # 7 domaines, 45 entrées FR/EN
+net.build_index()           # ~9s pour 242K mots
 
-net.respond("what is quantum mechanics")           # phrase
-net.paragraph("consciousness", n_sentences=5)      # paragraphe long
-net.respond_with_science("what is a qubit")        # phrase + AEON + knowledge + web
-net.concepts("quantum")                            # liste de concepts
+net.respond("hello, how are you?")                 # conversation routée
+net.respond("what is quantum mechanics")           # phrase (langue auto)
+net.respond_with_science("what is a black hole")   # fait vérifié + gabarit
+net.paragraph("consciousness", n_sentences=5)      # paragraphe
+net.concepts("quantum")                            # classés IDF + GloVe
+net.chain("quantum", "gravity")                    # chaînes d'association
+net.prove(["quantum", "mechanics"])                # empreinte SHA-256
+net.verify_proof(proof)                            # re-vérification
 net.lookup_knowledge("qubit", language="en")       # faits validés
 net.search("quantum decoherence")                  # recherche web
 net.stats()                                        # statistiques
 ```
+
+CLI : `ratisnet ask|converse|concepts|chain|prove|paragraph|stats`
+HTTP : `ratisnet-serve --port 8000` (endpoints /respond /science /concepts /chain /prove /health)
 
 ---
 
@@ -296,26 +366,28 @@ Token IBM : lu uniquement depuis `IBM_QUANTUM_TOKEN`, jamais committé (0 occurr
 | Grover Labs | 8 (grover_ratiss, reality_mode, documentation_contract) | 8/8 ✅ |
 | Jonathan Labs | 9 (tsp, resilience, bio_yeast, documentation_contract) | 9/9 ✅ |
 | atlas | 3 (verify-artifact, studio-model, external-artifacts) | 3/3 ✅ |
-| ratisnet | 17 (synchrotron 9 + scalpel 8) | 17/17 ✅ |
+| ratisnet | 57 (scalpel 8, synchrotron 9, lct_modules 4, lct_new_systems 4, language_pipeline 19, language_quality 13) | 57/57 ✅ |
 
-**Total : 65 tests, tous verts.**
+**Total : 105 tests, tous verts** (dont 57 sur ratisnet après reconstruction v2).
 
 ---
 
-## LIMITES HONNÊTES (à connaître)
+## LIMITES HONNÊTES (à connaître) — mises à jour après reconstruction v2
 
-1. **RATIS-Net n'est pas une base de connaissances.** Il reconstruit à partir de fragments vus.
-2. **Grammaire template-based.** 13K squelettes garantissent la grammaire mais pas la fluidité d'un Transformer.
-3. **Bigrammes.** Le Scalpel capture les paires de mots, pas la syntaxe profonde.
-4. **Coverage = corpus.** Si Wikipedia ne parle pas d'un sujet, RATIS-Net ne peut pas en parler (web search compense).
-5. **Pas de raisonnement multi-sauts.** Pas d'inférence A→B→C.
+1. **RATIS-Net n'est pas une base de connaissances.** Il reconstruit à partir de fragments appris ; les faits exacts viennent des knowledge packs (7 domaines, 45 entrées).
+2. **Grammaire template-based.** 13K + 24K gabarits garantissent la grammaire mais pas la fluidité d'un Transformer.
+3. **Bigrammes filtrées.** Le Scalpel capture les paires adjacentes après filtrage cos(GloVe) ≥ 0.3 ; les composés non stockés ("black hole") sont reconstruits à l'analyse (ranker).
+4. **Coverage = corpus + packs.** Si Wikipedia et les packs ne couvrent pas un sujet, le web compense (DuckDuckGo).
+5. ~~Pas de raisonnement multi-sauts~~ → **chaînes d'association tracées** (`chain()`, étiquetées corrélation, pas causalité). L'inférence logique A→B→C reste hors de portée.
 6. **Counts diagnostic est classique.** Shannon ≠ von Neumann. ETH ne peut pas être approximé sans tomographie.
 7. **Le Scalpel fait 294 MB** — nécessite Git LFS.
 8. **Google CSE non testé** — pas de clé. DuckDuckGo fonctionne.
-9. **ZK-STARK non générées** — science_core calcule P_sig + LCT mais pas de preuve cryptographique.
+9. ~~ZK-STARK non générées~~ → **empreinte d'intégrité SHA-256** implémentée (`prove`/`verify_proof`) : engagement déterministe sur le sous-graphe. Ce n'est PAS un ZK-STARK (pas de confidentialité, vérification = recalcul complet). Un vrai STARK exige un backend AIR/FRI.
 10. **Crédits QPU IBM quasi épuisés** — CPU d'abord.
 11. **GITHUB_TOKEN sans scope repo** — Jonathan crée les dépôts manuellement.
 12. **Le sidecar ne capte pas la structure des erreurs 01/10** — il réagit à la masse globale, pas au détail du bruit.
+13. **Biais du corpus persistant.** Wikipedia associe "black" à "metal"/"panther" ; le ranker IDF atténue, n'efface pas. Les knowledge packs priment pour les faits.
+14. **Scalpel anglophone.** Le français passe par les gabarits FR + alias FR des packs ; le corpus FR reste une piste ouverte.
 
 ---
 
@@ -336,8 +408,8 @@ python3 -m ratis_net.framework --query "what is consciousness"
 
 ### Tests
 ```bash
-# RATIS-Net
-PYTHONPATH=. python -m pytest -q --ignore=tests/test_lct_new_systems.py
+# RATIS-Net (test_lct_new_systems réparé — plus besoin de --ignore)
+PYTHONPATH=. python -m pytest -q
 
 # Engine (moteur)
 PYTHONPATH=src python -m pytest -q

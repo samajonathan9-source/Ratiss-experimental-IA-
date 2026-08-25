@@ -3,6 +3,16 @@
 > **Pour le prochain OpenHands qui prend le relais.**
 > Lis ça AVANT de coder quoi que ce soit.
 
+> **⚠️ MISE À JOUR v2 (25/08/2026)** : le framework a été reconstruit.
+> Lis `MEMO_GLOBAL.md` section 9 pour le détail. En résumé :
+> - Nouveau pipeline : `query_analyzer` → `intent_router` → `concept_ranker`
+>   → `skeleton_speaker_v2` (le v1 est dans `archive/legacy_v1/`).
+> - Packaging : `pip install .` → CLI `ratisnet` + serveur `ratisnet-serve`.
+> - 57 tests verts (`pytest tests/ -q`, plus besoin d'--ignore).
+> - `LICENSE` propriétaire JOHNKING0 & Jonathan Evina.
+> - Ne réintroduis JAMAIS les modules de `archive/` dans le chemin actif
+>   sans raison documentée.
+
 ---
 
 ## QUI EST JONATHAN
