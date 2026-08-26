@@ -190,6 +190,33 @@
   - Nouveaux : test_language_pipeline (19), test_language_quality (13),
     test_lct_new_systems réparé (4).
 
+
+  #### Session neurale (le cerveau parle sans gradient) — commits suivants
+  - **NeuralSpeaker** (`neural_speaker.py`) : le réseau reconstruit des
+    phrases par couverture du chemin de concepts — pas en récitant des
+    gabarits, pas en recitant des packs. Couverture IDF-pondérée + bonus
+    de définition (« X is a Y ») + sujet exact en tête.
+  - **Corpus v3 étendu** (`data/corpus/scalpel_v3_corpus.txt`) : 1 905 →
+    **12 695 phrases** propres via 34 catégories Wikipedia (4 274 titres).
+    Script : `scripts/collect_corpus_v3.py`.
+  - **Mode neuronal actif** dans le framework : `respond_with_science` rend
+    `neural` en clé ; prime sur les faits et gabarits quand la couverture
+    est suffisante ou que la phrase définit le sujet.
+  - **Serveur HTTP** (`server.py`) : `ratisnet-serve` active le
+    NeuralSpeaker au démarrage. L'interface web de chat est en ligne.
+  - **Résultat prouvé** : « Black hole is an astronomical body so compact
+    that its gravity prevents anything including light from escaping. » —
+    reconstruit par le réseau, pas copié d'un pack.
+  - **Chatbot complet = chapitre 2** : le réseau parle sur les définitions ;
+    la conversation libre (mémoire, dialogues multi-tours) reste une piste
+    ouverte. La preuve LCT-parole est livrée.
+
+  #### Nettoyage git (purge des gros fichiers)
+  - `ultra_context_map.json` (400 MB) retiré de l'historique (export dérivé).
+  - `scalpel_wikipedia.pkl` (294 MB) sous Git LFS.
+  - corpus v3 (1.5 MB) exclu de git, régénérable.
+  - `git filter-branch` utilisé pour purger l'historique (commit forcé).
+
 - **Ce qui a été fait (session précédente)** :
 
   #### Diagnostic et fix
@@ -281,6 +308,7 @@ ratis_net/
 ├── ratiss_synchrotron.py  # Reconstruction topologique
 ├── context_map_loader.py  # ultra_context_map.json streaming (400 MiB)
 ├── web_search.py          # DuckDuckGo / Google CSE
+├── neural_speaker.py      # le cerveau parle (couverture chemin concepts)
 ├── data_loader.py         # Streaming Hugging Face → Scalpel
 ├── lct_neuron.py          # Neurone LCT (ΔW = η·φ·P_sig·C)
 ├── emocontext_loader.py   # Émotions (test vivant test_lct_modules)
@@ -320,6 +348,12 @@ net.stats()                                        # statistiques
 
 CLI : `ratisnet ask|converse|concepts|chain|prove|paragraph|stats`
 HTTP : `ratisnet-serve --port 8000` (endpoints /respond /science /concepts /chain /prove /health)
+
+**Champ `neural` dans la réponse** : `True` = reconstruction du réseau,
+`None` = fallback gabarit/fait. `net.speak(query)` force le mode neuronal.
+**Corpus neuronal** : `data/corpus/scalpel_v3_corpus.txt` (12 695 phrases).
+**Serveur** : `python -m ratis_net.server --port 12000` (l'interface web est
+servie à `/`).
 
 ---
 
@@ -368,11 +402,37 @@ Token IBM : lu uniquement depuis `IBM_QUANTUM_TOKEN`, jamais committé (0 occurr
 | atlas | 3 (verify-artifact, studio-model, external-artifacts) | 3/3 ✅ |
 | ratisnet | 57 (scalpel 8, synchrotron 9, lct_modules 4, lct_new_systems 4, language_pipeline 19, language_quality 13) | 57/57 ✅ |
 
-**Total : 105 tests, tous verts** (dont 57 sur ratisnet après reconstruction v2).
+**Total : 66 tests sur ratisnet, tous verts** (dont 5 tests neuraux). Les autres dépôts gardent leurs tests (105 au total si tous comptés).
 
 ---
 
-## LIMITES HONNÊTES (à connaître) — mises à jour après reconstruction v2
+## LIMITES HONNÊTES (à connaître) — mises à jour après NeuralSpeaker
+
+1. **RATIS-Net reconstruit, ne copie pas.** Le cerveau parle par couverture
+   du chemin de concepts — pas par lecture de base. Les packs servent de
+   filet si couverture faible.
+2. **Le chatbot complet reste ouvert.** Le réseau définit bien ; la
+   conversation libre (mémoire, dialogues multi-tours) est une piste
+   ouverte. Les 24K gabarits sociaux sont utilisés pour le social.
+3. **Couverture dépend du corpus.** Les concepts absents du corpus (12 695
+   phrases) ne sont pas reconnus — le fallback gabarit/pack le dit
+   honnêtement.
+4. **Grammaire neurale ≠ fluide Transformer.** La reconstruction évite les
+   gabarits bancals, mais le texte reste factuel/définitionnel.
+5. **Poids bruts des neurones ubiquitaires.** « black hole » donnait
+   « metal, comedy » avant le ranker IDF ; la couverture IDF corrige.
+6. **Counts diagnostic est classique.** Shannon ≠ von Neumann.
+7. **Le checkpoint Scalpel (294 MB) est sous Git LFS.**
+8. **Google CSE non testé** — DuckDuckGo fonctionne.
+9. **Preuve d'intégrité SHA-256** (pas ZK-STARK) : engagement sur le
+   sous-graphe, vérifiable, pas de calcul privé.
+10. **Crédits QPU IBM quasi épuisés** — CPU d'abord.
+11. **GITHUB_TOKEN sans scope repo** — Jonathan crée les dépôts manuellement.
+12. **Le sidecar ne capte pas la structure des erreurs 01/10.**
+13. **Biais corpus persistant** (Wikipedia) — atténué par le ranker IDF,
+    les faits packs priment si cluster faible.
+14. **Scalpel anglophone** — le français passe par les gabarits FR + alias
+    des packs (multilingue complet = piste ouverte).
 
 1. **RATIS-Net n'est pas une base de connaissances.** Il reconstruit à partir de fragments appris ; les faits exacts viennent des knowledge packs (7 domaines, 45 entrées).
 2. **Grammaire template-based.** 13K + 24K gabarits garantissent la grammaire mais pas la fluidité d'un Transformer.
@@ -399,6 +459,7 @@ git clone https://github.com/evinajonathan13-max/Ratiss-experimental-IA-.git
 cd Ratiss-experimental-IA-
 pip install numpy datasets pytest
 git lfs install && git lfs pull
+# (le corpus v3 est recréé via scripts/collect_corpus_v3.py si absent)
 mkdir -p data/glove
 curl -L -o data/glove/glove.6B.zip "https://nlp.stanford.edu/data/glove.6B.zip"
 python3 -c "import zipfile; zipfile.ZipFile('data/glove/glove.6B.zip').extract('glove.6B.50d.txt', 'data/glove/')"
