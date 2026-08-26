@@ -108,12 +108,20 @@ class NeuralSpeaker:
             cov = self._coverage(words, path)
             sent_words = self.corpus[i].split()
             # bonus si la phrase DÉFINIT le sujet : « [the/a] <sujet> is/are »
-            # en tête — c'est le patron appris le plus informatif.
-            head = sent_words[:3]
+            # en tête — c'est le patron appris le plus informatif. Le sujet
+            # doit être le premier mot de contenu (pas "gw was black hole…").
+            head = sent_words[:4]
             defines = (len(sent_words) > 3
-                       and any(kw in head for kw in kws)
+                       and any(kw in head[:2] for kw in kws)
                        and any(w in {"is", "are", "was", "were"} for w in head))
-            score = cov + 0.05 * hits + (0.40 if defines else 0.0)
+            # sujet exact = premier mot de la phrase (pas juste présent)
+            subject_first = sent_words and sent_words[0] in kws
+            score = cov + 0.05 * hits + (0.50 if defines else 0.0) \
+                + (0.15 if subject_first else 0.0)
+            # Pénalité : les phrases trop courtes ou trop génériques ne
+            # doivent pas gagner sur la seule couverture.
+            if len(words) < 5:
+                score -= 0.15
             if score > best_score:
                 best, best_score, best_cov, best_defines = i, score, cov, defines
 
